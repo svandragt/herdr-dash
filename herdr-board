@@ -15,7 +15,9 @@ if [ ! -x "$BROWSER" ]; then
 	exit 1
 fi
 
-pgrep -f '[h]erdr-dash\.py' >/dev/null || ./herdr-dash.py >/dev/null 2>&1 &
+# setsid, or the board dies with whatever started it: run from a terminal, the
+# shell HUPs its process group once this script execs away.
+pgrep -f '[h]erdr-dash\.py' >/dev/null || setsid ./herdr-dash.py >/dev/null 2>&1 &
 
 # The window must not open before the port answers: a failed first GET leaves a
 # blank error page, and EventSource never gets a chance to reconnect.
