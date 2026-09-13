@@ -74,6 +74,9 @@ def card(pane):
 def forget(pid):
     """Drop a dimmed card, unless a new agent claimed the pane in the meantime."""
     if panes.get(pid, {}).get("gone") and panes.pop(pid, None):
+        # Else a recycled pane wears the dead agent's name until the new one
+        # writes a summary of its own.
+        summaries.pop(pid, None)
         broadcast()
 
 

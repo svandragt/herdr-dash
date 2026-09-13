@@ -32,4 +32,8 @@ dash.absorb(pane("idle"))
 assert is_fresh()
 dash.mark_seen("p1")
 assert not is_fresh(), "clicking the card clears it"
+# A pane that outlives its agent must not lend its title to the next one.
+dash.mark_gone("p1")
+dash.forget("p1")
+assert "p1" not in dash.summaries, "forget() must drop the cached summary too"
 print("ok")
