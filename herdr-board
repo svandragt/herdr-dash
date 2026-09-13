@@ -7,6 +7,14 @@ cd "$(dirname "$(readlink -f "$0")")"
 URL=http://127.0.0.1:7655/
 CLASS=com.github.svandragt.hello-browser.herdr-board
 
+# A .desktop launch inherits the systemd user PATH, which has no ~/bin — so the
+# `make link` symlink is invisible here even though a login shell finds it.
+BROWSER=$(command -v hello-browser || echo "$HOME/.local/bin/com.github.svandragt.hello-browser")
+if [ ! -x "$BROWSER" ]; then
+	echo "hello-browser not found; run 'make install' in ~/dev/vala/hello-browser" >&2
+	exit 1
+fi
+
 pgrep -f '[h]erdr-dash\.py' >/dev/null || ./herdr-dash.py >/dev/null 2>&1 &
 
 # The window must not open before the port answers: a failed first GET leaves a
@@ -18,4 +26,4 @@ until curl -sf -o /dev/null "$URL"; do
 	sleep 0.1
 done
 
-exec hello-browser --class "$CLASS" --single-instance "$URL"
+exec "$BROWSER" --class "$CLASS" --single-instance "$URL"

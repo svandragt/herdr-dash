@@ -101,3 +101,15 @@ update-desktop-database ~/.local/share/applications
 
 `StartupWMClass` must match the `--class` the wrapper passes, or GNOME won't
 group the window under this launcher's icon.
+
+A launcher runs under the systemd user environment, not your shell's, so test
+changes to `herdr-board` that way rather than from a terminal:
+
+```sh
+env -i HOME="$HOME" DISPLAY="$DISPLAY" \
+  PATH="$(systemctl --user show-environment | sed -n 's/^PATH=//p')" \
+  ./herdr-board
+```
+
+That PATH has no `~/bin`, which is why the wrapper resolves the hello-browser
+binary itself instead of trusting `make link`.
