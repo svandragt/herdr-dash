@@ -181,8 +181,16 @@ def reconcile():
 PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 <style>
  body{margin:0;font:14px system-ui;background:#14161a;color:#e6e6e6}
- h1{font-size:13px;font-weight:600;padding:12px 16px;margin:0;color:#8b939c}
- .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:0 16px 16px}
+ /* rtl flips the grid so the most actionable column sits on the right, nearest
+    the pane you just came from; .col puts text back the right way round. */
+ .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px;direction:rtl}
+ .col{direction:ltr}
+ /* Narrow: one stack. Column order is already priority order, so the actionable
+    cards land at the top for free. */
+ @media (max-width:700px){
+  .cols{grid-template-columns:1fr;gap:4px}
+  .col:not(:has(.card)){display:none}
+ }
  .col h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;margin:0 0 8px}
  .card{background:#1e2128;border-left:3px solid #3a3f48;border-radius:4px;padding:10px;
        margin-bottom:8px;cursor:pointer}
@@ -195,7 +203,6 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .fresh{outline:1px solid #bc8cff}
  .gone{opacity:.4}
 </style>
-<h1>herdr board</h1>
 <div class=cols>
  <div class="col blocked"><h2>Waiting for you</h2><div id=blocked></div></div>
  <div class="col working"><h2>In progress</h2><div id=working></div></div>
