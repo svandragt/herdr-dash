@@ -71,3 +71,33 @@ and clears the card's `fresh` flag. The violet outline means *this card
 changed status and you haven't looked at the pane since* — it clears either
 on that click or when herdr reports the pane focused, so focusing a pane
 directly in your terminal counts as seeing it.
+
+## Desktop launcher
+
+`herdr-board` is the entry point for the apps menu: it starts `herdr-dash.py` if
+the port isn't already answering, waits for it, then opens the board in its own
+hello-browser window (`~/dev/vala/hello-browser`) rather than a browser tab.
+The wait loop matters — a first GET that fails leaves a blank error page, and
+`EventSource` never gets the chance to reconnect.
+
+The `.desktop` entry isn't in the repo because `Exec` needs an absolute path.
+Recreate it with:
+
+```sh
+cat > ~/.local/share/applications/hello-browser-herdr-board.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=herdr board
+Comment=Kanban board for herdr-managed agent sessions
+Exec=$PWD/herdr-board
+Icon=utilities-system-monitor
+Categories=System;Monitor;
+Terminal=false
+StartupNotify=true
+StartupWMClass=com.github.svandragt.hello-browser.herdr-board
+EOF
+update-desktop-database ~/.local/share/applications
+```
+
+`StartupWMClass` must match the `--class` the wrapper passes, or GNOME won't
+group the window under this launcher's icon.

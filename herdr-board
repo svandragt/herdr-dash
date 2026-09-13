@@ -1,0 +1,21 @@
+#!/bin/sh
+# Desktop launcher: bring the board up if it isn't already, then show it in its
+# own hello-browser window rather than as one more browser tab.
+set -e
+cd "$(dirname "$(readlink -f "$0")")"
+
+URL=http://127.0.0.1:7655/
+CLASS=com.github.svandragt.hello-browser.herdr-board
+
+pgrep -f '[h]erdr-dash\.py' >/dev/null || ./herdr-dash.py >/dev/null 2>&1 &
+
+# The window must not open before the port answers: a failed first GET leaves a
+# blank error page, and EventSource never gets a chance to reconnect.
+i=0
+until curl -sf -o /dev/null "$URL"; do
+	i=$((i + 1))
+	[ "$i" -gt 50 ] && echo "herdr-dash did not come up" >&2 && exit 1
+	sleep 0.1
+done
+
+exec hello-browser --class "$CLASS" --single-instance "$URL"
