@@ -66,4 +66,8 @@ Claude's status words change.
 The SSE handler replaces four columns' `innerHTML` wholesale on every push.
 Card titles come from herdr and are interpolated unescaped; that's acceptable
 only because the server binds to `127.0.0.1` and the data is your own terminal
-titles. Clicking a card POSTs `/focus/<pane_id>`, which calls `agent.focus`.
+titles. Clicking a card POSTs `/focus/<pane_id>`, which calls `agent.focus`
+and clears the card's `fresh` flag. The violet outline means *this card
+changed status and you haven't looked at the pane since* — it clears either
+on that click or when herdr reports the pane focused, so focusing a pane
+directly in your terminal counts as seeing it.

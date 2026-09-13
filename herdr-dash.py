@@ -66,7 +66,7 @@ def card(pane):
         "status": pane.get("agent_status") or "unknown",
         "title": summaries.get(pid, title),
         "repo": os.path.basename(pane.get("cwd") or "") or "~",
-        "focused": bool(pane.get("focused")),
+        "fresh": False,
         "gone": False,
     }
 
@@ -116,10 +116,23 @@ def absorb(pane):
         return mark_gone(pane["pane_id"])
     c = card(pane)
     pid = c["pane_id"]
-    if panes.get(pid) == c:
+    prev = panes.get(pid)
+    # A changed card stays lit until you actually look at its pane. A change
+    # that happens while the pane is focused was seen as it happened.
+    if prev and not pane.get("focused"):
+        c["fresh"] = prev["fresh"] or prev["status"] != c["status"]
+    if prev == c:
         return False  # pane.updated fires on every render; only real changes matter
     panes[pid] = c
     return True
+
+
+def mark_seen(pid):
+    """Clicking a card is looking at it; don't wait for the focus event."""
+    c = panes.get(pid)
+    if c and c["fresh"]:
+        panes[pid] = {**c, "fresh": False}
+        broadcast()
 
 
 def reader():
@@ -176,7 +189,7 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .blocked .card{border-left-color:#f0883e;background:#2a1f16}
  .working .card{border-left-color:#4a9eff}
  .done .card{border-left-color:#3fb950}
- .focused{outline:1px solid #bc8cff}
+ .fresh{outline:1px solid #bc8cff}
  .gone{opacity:.4}
 </style>
 <h1>herdr board</h1>
@@ -192,7 +205,7 @@ new EventSource('/events').onmessage = e => {
   const cards = JSON.parse(e.data), out = {blocked:'', working:'', idle:'', done:''};
   for (const c of cards) {
     out[COLS[c.status] || 'idle'] +=
-      `<div class="card${c.focused ? ' focused' : ''}${c.gone ? ' gone' : ''}" data-id="${c.pane_id}">` +
+      `<div class="card${c.fresh ? ' fresh' : ''}${c.gone ? ' gone' : ''}" data-id="${c.pane_id}">` +
       `<div class=t>${c.title || c.pane_id}</div><div class=r>${c.repo}</div></div>`;
   }
   for (const k in out) document.getElementById(k).innerHTML = out[k];
@@ -243,7 +256,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.startswith("/focus/"):
             self.send_error(404)
             return
-        call("agent.focus", {"target": self.path[len("/focus/"):]})
+        target = self.path[len("/focus/"):]
+        call("agent.focus", {"target": target})
+        mark_seen(target)
         self.send_response(204)
         self.end_headers()
 
