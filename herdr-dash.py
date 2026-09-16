@@ -257,8 +257,12 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
   .col:not(:has(.card)){display:none}
  }
  .col h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;margin:0 0 8px}
- .host{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#e6e6e6;
-       margin:16px 16px -8px;padding-bottom:6px;border-bottom:1px solid #2a2e36}
+ .tabs{display:flex;gap:4px;padding:12px 16px 0;border-bottom:1px solid #2a2e36}
+ .tab{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;
+      padding:6px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+ .tab.on{color:#e6e6e6;border-bottom-color:#4a9eff}
+ .tab .n{color:#f0883e;margin-left:6px}
+ .strip:not(.on){display:none}
  .card{background:#1e2128;border-left:3px solid #3a3f48;border-radius:4px;padding:10px;
        margin-bottom:8px;cursor:pointer}
  .card:hover{background:#262a32}
@@ -274,23 +278,36 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 <script>
 const COLS = {blocked:'blocked', working:'working', idle:'idle', unknown:'idle', done:'done'};
 const TITLES = {blocked:'Waiting for you', working:'In progress', idle:'Idle', done:'Done'};
+let active = localStorage.getItem('host');
 new EventSource('/events').onmessage = e => {
   const cards = JSON.parse(e.data), hosts = {};
   for (const c of cards) (hosts[c.host] ||= []).push(c);
-  const names = Object.keys(hosts), multiHost = names.length > 1;
+  const names = Object.keys(hosts);  // server sorts local first
+  if (!names.includes(active)) active = names[0];
   let html = '';
-  for (const host of names) {  // one strip of columns per host; server sorts local first
+  if (names.length > 1) html += '<div class=tabs>' + names.map(h => {
+    const n = hosts[h].filter(c => c.status == 'blocked' && !c.gone).length;
+    return `<div class="tab${h == active ? ' on' : ''}" data-host="${h}">${h}${n ? `<span class=n>${n}</span>` : ''}</div>`;
+  }).join('') + '</div>';
+  for (const host of names) {
     const out = {blocked:'', working:'', idle:'', done:''};
     for (const c of hosts[host]) out[COLS[c.status] || 'idle'] +=
       `<div class="card${c.fresh ? ' fresh' : ''}${c.gone ? ' gone' : ''}" data-id="${c.key}">` +
       `<div class=t>${c.title || c.pane_id}</div><div class=r>${c.repo}</div></div>`;
-    if (multiHost) html += `<div class=host>${host}</div>`;
-    html += '<div class=cols>' + Object.keys(out).map(k =>
-      `<div class="col ${k}"><h2>${TITLES[k]}</h2>${out[k]}</div>`).join('') + '</div>';
+    html += `<div class="strip${host == active ? ' on' : ''}" data-host="${host}"><div class=cols>` +
+      Object.keys(out).map(k => `<div class="col ${k}"><h2>${TITLES[k]}</h2>${out[k]}</div>`).join('') +
+      '</div></div>';
   }
   document.getElementById('board').innerHTML = html;
 };
 document.addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (tab) {
+    active = tab.dataset.host;
+    localStorage.setItem('host', active);
+    for (const el of document.querySelectorAll('.tab,.strip')) el.classList.toggle('on', el.dataset.host == active);
+    return;
+  }
   const el = e.target.closest('.card');
   if (el) fetch('/focus/' + el.dataset.id, {method: 'POST'});
 });
