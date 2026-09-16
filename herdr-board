@@ -4,6 +4,32 @@
 set -e
 cd "$(dirname "$(readlink -f "$0")")"
 
+REMOTES=~/.config/herdr-dash/remotes
+
+# The board re-reads REMOTES itself every reconcile tick, so these subcommands
+# just edit the file and exit — no need to touch the running board.
+case "$1" in
+register)
+	mkdir -p "$(dirname "$REMOTES")"
+	touch "$REMOTES"
+	grep -qxF "$2" "$REMOTES" || echo "$2" >>"$REMOTES"
+	exit 0
+	;;
+unregister)
+	mkdir -p "$(dirname "$REMOTES")"
+	touch "$REMOTES"
+	grep -vxF "$2" "$REMOTES" >"$REMOTES.tmp" || true
+	mv "$REMOTES.tmp" "$REMOTES"
+	exit 0
+	;;
+list)
+	mkdir -p "$(dirname "$REMOTES")"
+	touch "$REMOTES"
+	cat "$REMOTES"
+	exit 0
+	;;
+esac
+
 URL=http://127.0.0.1:7655/
 CLASS=com.github.svandragt.hello-browser.herdr-board
 

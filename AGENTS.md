@@ -11,8 +11,9 @@ This file provides guidance to coding agents when working with code in this repo
 Stdlib only — no venv, no dependencies, no build step. There are no tests or
 linters; verify by running it against a live herdr and watching the board.
 
-`HERDR_SOCKET_PATH` overrides the socket (default `~/.config/herdr/herdr.sock`).
-herdr must be running, or `reader()` dies on connect at startup.
+`HERDR_SOCKET_PATH` overrides the local socket (default `~/.config/herdr/herdr.sock`).
+herdr doesn't need to be running yet — `reader()` retries on a failed connect,
+so it just picks the board up once herdr starts.
 
 ## Architecture
 
@@ -37,8 +38,8 @@ alone is sufficient — don't collapse them.
 
 | Thread | Job |
 |---|---|
-| `reader` | seeds from `agent.list`, then streams events |
-| `reconcile` | 5s poll for vanished panes |
+| `reader` | one per host; seeds from `agent.list`, then streams events, reconnecting on failure |
+| `reconcile` | one, all hosts; 5s poll for vanished panes, plus the remote roster (tunnels, reader threads) |
 | `pusher` | coalesces `dirty` into an SSE push at most every 2s |
 | HTTP | `ThreadingHTTPServer` — `/events` blocks forever, one thread deadlocks |
 
@@ -60,13 +61,44 @@ so a busy card would lose its only name. `summaries` keeps the last non-activity
 title per pane; `ACTIVITY` is a vocabulary regex and will need extending as
 Claude's status words change.
 
+## Remotes
+
+`herdr --remote wyse` talks to a wholly separate herdr server on that machine, with
+its own `agent.list`. The board treats a registered remote as just another host:
+
+```sh
+./herdr-board register wyse      # append to ~/.config/herdr-dash/remotes
+./herdr-board unregister wyse    # remove it
+./herdr-board list                # show what's registered
+```
+
+`reconcile()` re-reads that file every tick; it doesn't need the board restarted.
+For each new host it opens the ssh tunnel and starts that host's `reader`; for a
+removed one it kills the tunnel and dims its cards.
+
+The board owns the tunnel (`ssh -N -L <local-sock>:<remote-sock> <target>`) rather
+than expecting one to already exist. The local end is a short path,
+`/tmp/herdr-dash-<target>.sock` — a long forwarding spec gets rejected by ssh, which
+is also why the registry line is `target` or `target:/remote/socket/path` rather than
+the local path.
+
+Cards are keyed `<host>:<pane_id>`, not the bare pane id: two independent herdr
+servers mint ids from their own counters, so `wyse` and `local` can both hand out
+`p1` for unrelated panes. `agent.focus` still wants the raw id, so the key is split
+back into host and pane id at the point of use (`/focus/<key>`, `reconcile`'s
+vanished-pane check).
+
+If a tunnel dies, `reconcile` notices (`Popen.poll()`) and respawns it — that's the
+reconnect for a dropped ssh, the same way `reader`'s retry loop is the reconnect for
+a dropped herdr.
+
 ## Frontend
 
 `PAGE` is a single string constant — inline CSS and JS, no build, no framework.
 The SSE handler replaces four columns' `innerHTML` wholesale on every push.
 Card titles come from herdr and are interpolated unescaped; that's acceptable
 only because the server binds to `127.0.0.1` and the data is your own terminal
-titles. Clicking a card POSTs `/focus/<pane_id>`, which calls `agent.focus`
+titles. Clicking a card POSTs `/focus/<key>`, which calls `agent.focus`
 and clears the card's `fresh` flag. The violet outline means *this card
 changed status and you haven't looked at the pane since* — it clears either
 on that click or when herdr reports the pane focused, so focusing a pane
