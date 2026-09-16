@@ -257,7 +257,8 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
   .col:not(:has(.card)){display:none}
  }
  .col h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;margin:0 0 8px}
- .host{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5b626b;margin:8px 0 4px}
+ .host{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#e6e6e6;
+       margin:16px 16px -8px;padding-bottom:6px;border-bottom:1px solid #2a2e36}
  .card{background:#1e2128;border-left:3px solid #3a3f48;border-radius:4px;padding:10px;
        margin-bottom:8px;cursor:pointer}
  .card:hover{background:#262a32}
@@ -269,26 +270,25 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .fresh{outline:1px solid #bc8cff}
  .gone{opacity:.4}
 </style>
-<div class=cols>
- <div class="col blocked"><h2>Waiting for you</h2><div id=blocked></div></div>
- <div class="col working"><h2>In progress</h2><div id=working></div></div>
- <div class="col idle"><h2>Idle</h2><div id=idle></div></div>
- <div class="col done"><h2>Done</h2><div id=done></div></div>
-</div>
+<div id=board></div>
 <script>
 const COLS = {blocked:'blocked', working:'working', idle:'idle', unknown:'idle', done:'done'};
+const TITLES = {blocked:'Waiting for you', working:'In progress', idle:'Idle', done:'Done'};
 new EventSource('/events').onmessage = e => {
-  const cards = JSON.parse(e.data), out = {blocked:'', working:'', idle:'', done:''};
-  const multiHost = new Set(cards.map(c => c.host)).size > 1, lastHost = {};
-  for (const c of cards) {
-    const col = COLS[c.status] || 'idle';
-    if (multiHost && lastHost[col] !== c.host) out[col] += `<div class=host>${c.host}</div>`;
-    lastHost[col] = c.host;
-    out[col] +=
+  const cards = JSON.parse(e.data), hosts = {};
+  for (const c of cards) (hosts[c.host] ||= []).push(c);
+  const names = Object.keys(hosts), multiHost = names.length > 1;
+  let html = '';
+  for (const host of names) {  // one strip of columns per host; server sorts local first
+    const out = {blocked:'', working:'', idle:'', done:''};
+    for (const c of hosts[host]) out[COLS[c.status] || 'idle'] +=
       `<div class="card${c.fresh ? ' fresh' : ''}${c.gone ? ' gone' : ''}" data-id="${c.key}">` +
       `<div class=t>${c.title || c.pane_id}</div><div class=r>${c.repo}</div></div>`;
+    if (multiHost) html += `<div class=host>${host}</div>`;
+    html += '<div class=cols>' + Object.keys(out).map(k =>
+      `<div class="col ${k}"><h2>${TITLES[k]}</h2>${out[k]}</div>`).join('') + '</div>';
   }
-  for (const k in out) document.getElementById(k).innerHTML = out[k];
+  document.getElementById('board').innerHTML = html;
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('.card');

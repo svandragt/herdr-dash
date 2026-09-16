@@ -95,7 +95,9 @@ a dropped herdr.
 ## Frontend
 
 `PAGE` is a single string constant — inline CSS and JS, no build, no framework.
-The SSE handler replaces four columns' `innerHTML` wholesale on every push.
+The SSE handler rebuilds the whole board on every push: one strip of four
+columns per host, local first, with a host heading only when more than one host
+is present.
 Card titles come from herdr and are interpolated unescaped; that's acceptable
 only because the server binds to `127.0.0.1` and the data is your own terminal
 titles. Clicking a card POSTs `/focus/<key>`, which calls `agent.focus`
