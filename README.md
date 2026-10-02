@@ -25,10 +25,7 @@ herdr doesn't need to be running first. The board retries until it is.
 ## How it works
 
 herdr already classifies each pane as idle, working, blocked or done. The
-board subscribes to herdr's pane events over its unix socket and draws the
-result, so it holds no opinion about agent state of its own. Every few
-seconds it re-reads the full agent list, so a missed event can't leave a
-card stuck.
+board subscribes to herdr's pane events.
 
 A card that changed while you weren't looking at its pane gets a purple
 outline until you focus it. A card whose session has exited dims for half a
@@ -39,14 +36,12 @@ minute, then disappears.
 If you run herdr on other machines too, register each one as an ssh target:
 
 ```sh
-./herdr-board register wyse        # host from ~/.ssh/config
-./herdr-board unregister wyse
+./herdr-board register my-new-machine        # host from ~/.ssh/config
+./herdr-board unregister my-new-machine
 ./herdr-board list
 ```
 
-Each host gets its own tab. The board opens an ssh tunnel to the remote
-socket itself and reconnects if it drops. If the remote socket isn't at the
-default path, write `host:/path/to/herdr.sock` on the line instead.
+Each host gets its own tab.
 
 The registry is a plain text file at `~/.config/herdr-dash/remotes`, one
 target per line, read on every tick. Editing it by hand works too.
