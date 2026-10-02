@@ -6,6 +6,12 @@ in progress, idle, done. Click a card to focus that pane in herdr.
 
 One Python file, standard library only. No install step.
 
+![The board as a narrow side pane: four stacked sections](docs/board-narrow.png)
+
+In a wider window the sections become columns:
+
+![The board in a wide window: four columns side by side](docs/board-wide.png)
+
 ## Run
 
 ```sh
