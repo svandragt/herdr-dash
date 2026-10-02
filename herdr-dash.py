@@ -213,7 +213,7 @@ def reader(host):
 
 
 def reconcile():
-    """Events carry status promptly but not disappearance; agent.list is the truth.
+    """Events carry status promptly but can be missed; agent.list is the truth.
     Also owns the remote roster: re-reads the registry each tick, and respawns any
     ssh tunnel that has died so a dropped remote reconnects on its own."""
     while True:
@@ -235,11 +235,13 @@ def reconcile():
                 _, tunnels[target] = spawn_tunnel(target, registry[target])
         for host in list(hosts):
             try:
-                live = {f"{host}:{p['pane_id']}" for p in call(host, "agent.list", {})["result"]["agents"]}
+                agents = call(host, "agent.list", {})["result"]["agents"]
             except Exception:
                 continue  # herdr (or the tunnel) is down — keep the last board rather than wiping it
+            live = {f"{host}:{p['pane_id']}" for p in agents}
             gone = [k for k in panes if k.startswith(f"{host}:") and k not in live]
-            if any([mark_gone(k) for k in gone]):
+            # A missed pane.updated (reconnect gap) would otherwise pin a stale status forever.
+            if any([absorb(host, p) for p in agents] + [mark_gone(k) for k in gone]):
                 broadcast()
 
 
