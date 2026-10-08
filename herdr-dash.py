@@ -290,15 +290,15 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .tab{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;
       padding:6px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
  .tab.on{color:#e6e6e6;border-bottom-color:#4a9eff}
- .tab .n{color:#f0883e;margin-left:6px}
+ .tab .n{color:#f85149;margin-left:6px}
  .strip:not(.on){display:none}
  .card{background:#1e2128;border-left:3px solid #3a3f48;border-radius:4px;padding:10px;
        margin-bottom:8px;cursor:pointer}
  .card:hover{background:#262a32}
  .card .t{font-weight:500;margin-bottom:3px}
  .card .r{font-size:12px;color:#8b939c;font-family:ui-monospace,monospace}
- .blocked .card{border-left-color:#f0883e;background:#2a1f16}
- .working .card{border-left-color:#4a9eff}
+ .blocked .card{border-left-color:#f85149;background:#2a1618}
+ .working .card{border-left-color:#f0883e}
  .done .card{border-left-color:#3fb950}
  .fresh{outline:1px solid #bc8cff}
  .gone{opacity:.4}
