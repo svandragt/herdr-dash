@@ -14,12 +14,19 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+try:  # optional: the system Python's PyGObject, only for the dock badge
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+except Exception:
+    bus = None
+
 SOCKET = os.environ.get("HERDR_SOCKET_PATH", os.path.expanduser("~/.config/herdr/herdr.sock"))
 REGISTRY = os.path.expanduser("~/.config/herdr-dash/remotes")
 ADDR = ("127.0.0.1", 7655)
 GONE_TTL = 30  # seconds a dimmed card lingers after its session exits
 RECONCILE_EVERY = 5
 PUSH_EVERY = 2  # seconds; the floor on how often a card may move
+DESKTOP_ID = "hello-browser-herdr-board.desktop"  # the launcher AGENTS.md installs
 
 hosts = {"local": SOCKET}  # host name -> socket path; remotes added by reconcile()
 tunnels = {}  # host name -> ssh Popen, remotes only
@@ -134,8 +141,28 @@ def push_board():
     with lock:
         board = json.dumps(sorted(panes.values(), key=board_order))
         targets = list(subscribers)
+        waiting = sum(c["status"] in ("blocked", "done") and not c.get("gone") for c in panes.values())
     for q in targets:
         q.put(board)
+    set_dock_badge(waiting)
+
+
+last_badge = None
+
+
+def set_dock_badge(count):
+    """Unity LauncherEntry: Plank and the Ubuntu dock draw it on the launcher icon.
+    The dock drops a badge when its sender disconnects, so a one-shot `gdbus emit`
+    can't hold one; this keeps the bus connection for the life of the server."""
+    global last_badge
+    if count == last_badge or bus is None:
+        return
+    last_badge = count
+    bus.emit_signal(None, "/herdr_dash", "com.canonical.Unity.LauncherEntry", "Update",
+                    GLib.Variant("(sa{sv})", (f"application://{DESKTOP_ID}", {
+                        "count": GLib.Variant("x", count),
+                        "count-visible": GLib.Variant("b", count > 0)})))
+    bus.flush_sync()
 
 
 def broadcast():
@@ -285,7 +312,7 @@ new EventSource('/events').onmessage = e => {
   const cards = JSON.parse(e.data), hosts = {};
   for (const c of cards) (hosts[c.host] ||= []).push(c);
   const names = Object.keys(hosts);  // server sorts local first
-  const waiting = cards.filter(c => c.status == 'blocked' && !c.gone).length;
+  const waiting = cards.filter(c => (c.status == 'blocked' || c.status == 'done') && !c.gone).length;
   document.title = (waiting ? `(${waiting}) ` : '') + 'herdr board';
   if (!names.includes(active)) active = names[0];
   let html = '';

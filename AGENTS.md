@@ -8,7 +8,9 @@ This file provides guidance to coding agents when working with code in this repo
 ./herdr-dash.py     # serves http://127.0.0.1:7655
 ```
 
-Stdlib only — no venv, no dependencies, no build step. There are no tests or
+Stdlib only — no venv, no dependencies, no build step. The one exception is the
+dock badge, which uses the system Python's PyGObject if it imports and is skipped
+if not. There are no tests or
 linters; verify by running it against a live herdr and watching the board.
 
 `HERDR_SOCKET_PATH` overrides the local socket (default `~/.config/herdr/herdr.sock`).
