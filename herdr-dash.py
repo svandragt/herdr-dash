@@ -285,6 +285,8 @@ new EventSource('/events').onmessage = e => {
   const cards = JSON.parse(e.data), hosts = {};
   for (const c of cards) (hosts[c.host] ||= []).push(c);
   const names = Object.keys(hosts);  // server sorts local first
+  const waiting = cards.filter(c => c.status == 'blocked' && !c.gone).length;
+  document.title = (waiting ? `(${waiting}) ` : '') + 'herdr board';
   if (!names.includes(active)) active = names[0];
   let html = '';
   if (names.length > 1) html += '<div class=tabs>' + names.map(h => {
