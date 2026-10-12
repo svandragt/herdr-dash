@@ -308,7 +308,15 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 const COLS = {blocked:'blocked', working:'working', idle:'idle', unknown:'idle', done:'done'};
 const TITLES = {blocked:'Waiting for you', working:'In progress', idle:'Idle', done:'Done'};
 let active = localStorage.getItem('host');
-new EventSource('/events').onmessage = e => {
+// A stream that silently stops (sleep, network change) leaves a stale board; the server pings every 5s.
+let heard = Date.now();
+const es = new EventSource('/events');
+es.addEventListener('ping', () => heard = Date.now());
+setInterval(() => {
+  if (Date.now() - heard > 15000) fetch('/').then(r => r.ok && location.reload(), () => {});
+}, 5000);
+es.onmessage = e => {
+  heard = Date.now();
   const cards = JSON.parse(e.data), hosts = {};
   for (const c of cards) (hosts[c.host] ||= []).push(c);
   const names = Object.keys(hosts);  // server sorts local first
@@ -372,7 +380,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             q.put(board)
             while True:
-                self.wfile.write(("data: " + q.get() + "\n\n").encode())
+                try:
+                    msg = "data: " + q.get(timeout=5) + "\n\n"
+                except queue.Empty:
+                    msg = "event: ping\ndata:\n\n"
+                self.wfile.write(msg.encode())
                 self.wfile.flush()
         except Exception:
             pass
