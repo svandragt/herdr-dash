@@ -10,8 +10,9 @@ This file provides guidance to coding agents when working with code in this repo
 
 Stdlib only — no venv, no dependencies, no build step. The one exception is the
 dock badge, which uses the system Python's PyGObject if it imports and is skipped
-if not. There are no tests or
-linters; verify by running it against a live herdr and watching the board.
+if not. `python3 test_fresh.py` is an assert-based self-check of the card
+logic; beyond that, verify by running against a live herdr and watching the board.
+To cut a release, follow `RELEASING.md`.
 
 `HERDR_SOCKET_PATH` overrides the local socket (default `~/.config/herdr/herdr.sock`).
 herdr doesn't need to be running yet — `reader()` retries on a failed connect,
