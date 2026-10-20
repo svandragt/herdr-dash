@@ -31,6 +31,10 @@ A card that changed while you weren't looking at its pane gets a purple
 outline until you focus it. A card whose session has exited dims for half a
 minute, then disappears.
 
+To keep a session off the board, start its name with a dot, for example
+`/rename .diff` in Claude. The card appears only while that session waits for
+you.
+
 ## Remote herdr servers
 
 If you run herdr on other machines too, register each one as an ssh target:

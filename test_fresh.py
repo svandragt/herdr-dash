@@ -42,4 +42,11 @@ dash.absorb("local", pane("working"))
 dash.absorb("wyse", pane("working"))
 assert {"local:p1", "wyse:p1"} <= dash.panes.keys(), "same pane_id on two hosts is two cards"
 
+# A session titled with a leading dot stays off the board until it needs you.
+hidden = {**pane("idle"), "pane_id": "p2", "terminal_title_stripped": ".diff"}
+dash.absorb("local", hidden)
+assert "local:p2" not in [c["key"] for c in dash.board()], "dot sessions are hidden"
+dash.absorb("local", {**hidden, "agent_status": "blocked"})
+assert "local:p2" in [c["key"] for c in dash.board()], "unless they are blocked"
+
 print("ok")

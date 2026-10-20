@@ -137,13 +137,20 @@ def board_order(c):
     return (c["host"] != "local", c["host"], c["pane_id"])
 
 
+def board():
+    """A session titled ".name" is background work: show it only when it needs you."""
+    return sorted((c for c in panes.values() if not c["title"].startswith(".") or c["status"] == "blocked"),
+                  key=board_order)
+
+
 def push_board():
     with lock:
-        board = json.dumps(sorted(panes.values(), key=board_order))
+        cards = board()
         targets = list(subscribers)
-        waiting = sum(c["status"] in ("blocked", "done") and not c.get("gone") for c in panes.values())
+    waiting = sum(c["status"] in ("blocked", "done") and not c.get("gone") for c in cards)
+    cards = json.dumps(cards)
     for q in targets:
-        q.put(board)
+        q.put(cards)
     set_dock_badge(waiting)
 
 
@@ -376,9 +383,9 @@ class Handler(BaseHTTPRequestHandler):
         q = queue.Queue()
         with lock:
             subscribers.append(q)
-            board = json.dumps(sorted(panes.values(), key=board_order))
+            cards = json.dumps(board())
         try:
-            q.put(board)
+            q.put(cards)
             while True:
                 try:
                     msg = "data: " + q.get(timeout=5) + "\n\n"
