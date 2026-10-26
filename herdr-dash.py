@@ -282,6 +282,7 @@ def reconcile():
 
 
 PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
 <style>
  body{margin:0;font:14px system-ui;background:#14161a;color:#e6e6e6}
  /* rtl flips the grid so the most actionable column sits on the right, nearest

@@ -9,6 +9,8 @@ spec = importlib.util.spec_from_file_location(
 dash = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dash)
 
+# Without it iOS lays the page out at 980px and the narrow layout never applies.
+assert '<meta name=viewport content="width=device-width,initial-scale=1">' in dash.PAGE
 assert dash.BIND == ["127.0.0.1", "100.64.0.7"], "localhost always, plus HERDR_DASH_BIND"
 
 
