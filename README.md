@@ -22,6 +22,19 @@ Open http://127.0.0.1:7655. The board connects to herdr's socket at
 `~/.config/herdr/herdr.sock`; set `HERDR_SOCKET_PATH` to use another one.
 herdr doesn't need to be running first. The board retries until it is.
 
+## Open the board from your phone
+
+To reach the board over a private network such as NetBird or Tailscale, set
+`HERDR_DASH_BIND` to this computer's address on that network:
+
+```sh
+HERDR_DASH_BIND=100.64.0.7 ./herdr-dash.py
+```
+
+Then open `http://100.64.0.7:7655` on the phone. The board has no login, so
+anyone on that network can see your sessions and focus panes. Start the board
+after the network is up; it skips an address that isn't there yet.
+
 ## How it works
 
 herdr already classifies each pane as idle, working, blocked or done. The

@@ -18,6 +18,10 @@ To cut a release, follow `RELEASING.md`.
 herdr doesn't need to be running yet — `reader()` retries on a failed connect,
 so it just picks the board up once herdr starts.
 
+`HERDR_DASH_BIND` adds space-separated listen addresses beside `127.0.0.1`, one
+`ThreadingHTTPServer` each. An address that fails to bind is skipped, so a VPN
+that is down never stops the localhost board the launcher waits for.
+
 ## Architecture
 
 One file, ~250 lines. It is a read-mostly bridge: herdr already classifies each
@@ -108,9 +112,9 @@ columns per host, local first. With more than one host, a tab bar picks the
 visible strip; the choice lives in `localStorage`, and an inactive tab shows how
 many of its cards are blocked so a remote that needs you still surfaces.
 Card titles come from herdr and are interpolated unescaped; that's acceptable
-only because the server binds to `127.0.0.1` and the data is your own terminal
-titles. Clicking a card POSTs `/focus/<key>`, which calls `agent.focus`
-and clears the card's `fresh` flag. The violet outline means *this card
+only because the server binds to `127.0.0.1` (plus any `HERDR_DASH_BIND` address
+on your own private network) and the data is your own terminal titles.
+Clicking a card POSTs `/focus/<key>`, which calls `agent.focus` and clears the card's `fresh` flag. The violet outline means *this card
 changed status and you haven't looked at the pane since* — it clears either
 on that click or when herdr reports the pane focused, so focusing a pane
 directly in your terminal counts as seeing it.

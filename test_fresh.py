@@ -1,11 +1,15 @@
 """Self-check for the fresh flag. Run: python3 test_fresh.py"""
 import importlib.util
+import os
 import pathlib
 
+os.environ["HERDR_DASH_BIND"] = "100.64.0.7"
 spec = importlib.util.spec_from_file_location(
     "dash", pathlib.Path(__file__).parent / "herdr-dash.py")
 dash = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dash)
+
+assert dash.BIND == ["127.0.0.1", "100.64.0.7"], "localhost always, plus HERDR_DASH_BIND"
 
 
 def pane(status, focused=False):

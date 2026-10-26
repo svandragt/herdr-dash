@@ -22,7 +22,9 @@ except Exception:
 
 SOCKET = os.environ.get("HERDR_SOCKET_PATH", os.path.expanduser("~/.config/herdr/herdr.sock"))
 REGISTRY = os.path.expanduser("~/.config/herdr-dash/remotes")
-ADDR = ("127.0.0.1", 7655)
+# Extra addresses besides localhost, e.g. a NetBird IP to reach the board from a phone.
+BIND = ["127.0.0.1"] + os.environ.get("HERDR_DASH_BIND", "").split()
+PORT = 7655
 GONE_TTL = 30  # seconds a dimmed card lingers after its session exits
 RECONCILE_EVERY = 5
 PUSH_EVERY = 2  # seconds; the floor on how often a card may move
@@ -415,6 +417,15 @@ if __name__ == "__main__":
     threading.Thread(target=reader, args=("local",), daemon=True).start()
     threading.Thread(target=reconcile, daemon=True).start()
     threading.Thread(target=pusher, daemon=True).start()
-    print("http://%s:%d" % ADDR)
-    # ThreadingHTTPServer: /events blocks forever, so one thread would deadlock.
-    ThreadingHTTPServer(ADDR, Handler).serve_forever()
+    for host in BIND[1:]:
+        try:
+            # ThreadingHTTPServer: /events blocks forever, so one thread would deadlock.
+            server = ThreadingHTTPServer((host, PORT), Handler)
+        except OSError as e:
+            # shortcut: an address that isn't up yet (VPN down) stays skipped until a restart
+            print("skipping %s: %s" % (host, e))
+            continue
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print("http://%s:%d" % (host, PORT))
+    print("http://%s:%d" % (BIND[0], PORT))
+    ThreadingHTTPServer((BIND[0], PORT), Handler).serve_forever()
