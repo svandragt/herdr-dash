@@ -45,7 +45,7 @@ outline until you focus it. A card whose session has exited dims for half a
 minute, then disappears.
 
 To keep a session off the board, start its name with a dot, for example
-`/rename .diff` in Claude. The card appears only while that session waits for
+`/rename .diff` in Claude, or run it in a worktree folder whose name starts with a dot. The card appears only while that session waits for
 you.
 
 ## Remote herdr servers

@@ -140,8 +140,9 @@ def board_order(c):
 
 
 def board():
-    """A session titled ".name" is background work: show it only when it needs you."""
-    return sorted((c for c in panes.values() if not c["title"].startswith(".") or c["status"] == "blocked"),
+    """A session titled ".name" or in a ".name" worktree folder is background work: show it only when it needs you."""
+    return sorted((c for c in panes.values()
+                   if not (c["title"].startswith(".") or c["repo"].startswith(".")) or c["status"] == "blocked"),
                   key=board_order)
 
 

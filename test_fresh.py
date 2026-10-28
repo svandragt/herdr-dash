@@ -55,4 +55,13 @@ assert "local:p2" not in [c["key"] for c in dash.board()], "dot sessions are hid
 dash.absorb("local", {**hidden, "agent_status": "blocked"})
 assert "local:p2" in [c["key"] for c in dash.board()], "unless they are blocked"
 
+# A worktree folder with a leading dot hides the card the same way.
+wt = {**pane("idle"), "pane_id": "p3", "terminal_title_stripped": "BH-1 thing", "cwd": "/x/.bh-1-thing"}
+dash.absorb("local", wt)
+assert "local:p3" not in [c["key"] for c in dash.board()], "dot worktree folders are hidden"
+dash.absorb("local", {**wt, "agent_status": "blocked"})
+assert "local:p3" in [c["key"] for c in dash.board()], "unless they are blocked"
+dash.absorb("local", {**wt, "cwd": "/x/bh-1-thing"})
+assert "local:p3" in [c["key"] for c in dash.board()], "normal repo and title show"
+
 print("ok")
