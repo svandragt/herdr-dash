@@ -119,8 +119,10 @@ everything from the second-to-last rule, which removes the box and the status
 footer below it. Any other pair of rules is not cut: a table, a `╭──╮` box such
 as a diff, or another agent's box keeps its rows. A permission dialog box has
 no prompt line, so its question and options stay, and so does the footer below it. In
-every case the function drops the remaining rule lines, collapses runs of blank
-lines to one and trims blank lines at both ends.
+every case the function drops the remaining rule lines, except a rule line whose
+nearest non-blank line above or below starts with `│` (after spaces): that is a
+table's `┌─┬─┐`, `├─┼─┤` or `└─┴─┘` border, and it stays. It then collapses runs of
+blank lines to one and trims blank lines at both ends.
 `recent_unwrapped` joins the terminal's soft wraps, so the page wraps lines to
 its own width.
 
@@ -225,9 +227,11 @@ Opening a card focuses the prompt input only when `matchMedia("(pointer: fine)")
 page from the start and a refresh only replaces the text inside them, so the
 `<details>` keeps its open state. A refresh whose JSON equals the last one does
 nothing, which keeps the reader's text selection. Each text part is cut into
-groups: consecutive lines that start with `│ ┌ ├ └ ╭ ╰ ┃` (after leading spaces)
-become one `<pre class=tbl>` (`white-space: pre`, scrolls sideways) and the other
-lines become `white-space: pre-wrap` prose at 15px, line height 1.6 and at most
+groups. A table line starts with `│ ┌ ├ └ ╭ ╰ ┃` (after leading spaces) and also has
+a second `│` or `┃`, is made only of box-drawing characters, or sits next to a
+line that starts that way, so a wrapped prose line that starts with `┃).` stays
+prose. Consecutive table lines become one `<pre class=tbl>` (`white-space: pre`,
+scrolls sideways) and the other lines become `white-space: pre-wrap` prose at 15px, line height 1.6 and at most
 70ch wide. The recap scrolls to the bottom on a refresh only if it was already at
 the bottom, so you can read further up.
 `#panel[hidden]` needs its own `display:none` rule, because `display:flex` on

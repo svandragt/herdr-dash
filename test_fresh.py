@@ -121,12 +121,30 @@ assert dash.clean_recap(RULE) == ""
 # The prompt carries typed text or a placeholder, and Claude follows it with a no-break space.
 typed = f"{body}\n{RULE}\n❯\u00a0Try \"how do I log an error?\"\n{RULE}\n  7ba1a27e  Opus 5.5\n"
 assert dash.clean_recap(typed) == dash.clean_recap(body), "a prompt line with text is still the input box"
-# A table has rules but no input box, so its rows stay.
+# A table has rules but no input box, so its rows and its border lines (a `│` line next to them) stay.
 table = "┌───┬───┐\n│ a │ b │\n├───┼───┤\n│ 1 │ 2 │\n└───┴───┘\n"
-assert dash.clean_recap(table) == "│ a │ b │\n│ 1 │ 2 │", dash.clean_recap(table)
+assert dash.clean_recap(table) == table.strip("\n"), dash.clean_recap(table)
 # A box at the start must not empty the recap.
 box = "╭──────────╮\n│ - old    │\n│ + new    │\n╰──────────╯\nthe edit is shown above\n"
-assert dash.clean_recap(box) == "│ - old    │\n│ + new    │\nthe edit is shown above", dash.clean_recap(box)
+assert dash.clean_recap(box) == box.strip("\n"), dash.clean_recap(box)
+# A real Claude table keeps its four border lines; the lone `────` separator below it goes.
+fixture = """\
+Here is an example table:
+┌────────────┬──────────────────────────────┬────────────┐
+│   Commit   │         What it does         │   Tests    │
+├────────────┼──────────────────────────────┼────────────┤
+│ 6fd6c03    │ Shows sessions in dot        │ 1 new      │
+│            │ worktree folders again       │ assert     │
+├────────────┼──────────────────────────────┼────────────┤
+│ Focus      │ Puts the cursor in the box   │ 1 assert   │
+└────────────┴──────────────────────────────┴────────────┘
+
+────────────────────────────────
+Done.
+"""
+want = fixture.replace("└────────────┴──────────────────────────────┴────────────┘\n\n────────────────────────────────\n",
+                       "└────────────┴──────────────────────────────┴────────────┘\n\n")
+assert dash.clean_recap(fixture) == want.strip("\n"), dash.clean_recap(fixture)
 # A permission dialog has no input box, so the question and options stay.
 dialog = """\
 ╭──────────────────────────────╮
@@ -183,9 +201,9 @@ assert split["asked"] == "please fix the parser\nand keep the tests green", spli
 assert split["reply"] == ("I'll start with the failing case.\n\nThe parser is fixed. Two things changed:\n"
                           "- it keeps the tail\n- it trims blanks"), split["reply"]
 assert split["earlier"] == "❯ earlier question\n\n● earlier answer", split["earlier"]
-# A table in the reply stays, one row per line, without its rule lines.
+# A table in the reply stays, one row per line, with its border lines.
 tabled = "❯ compare them\n\n● Here is the table:\n  ┌───┬───┐\n  │ a │ b │\n  ├───┼───┤\n  │ 1 │ 2 │\n  └───┴───┘\n  Done.\n"
-assert dash.split_recap(dash.clean_recap(tabled))["reply"] == "Here is the table:\n│ a │ b │\n│ 1 │ 2 │\nDone."
+assert dash.split_recap(dash.clean_recap(tabled))["reply"] == "Here is the table:\n┌───┬───┐\n│ a │ b │\n├───┼───┤\n│ 1 │ 2 │\n└───┴───┘\nDone."
 # Without a prompt (another agent, a fresh session) the whole text is the reply.
 assert dash.split_recap("just output\n\nmore") == {"asked": "", "reply": "just output\n\nmore", "earlier": ""}
 assert dash.split_recap("") == {"asked": "", "reply": "", "earlier": ""}

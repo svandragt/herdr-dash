@@ -440,13 +440,16 @@ async function act(route, body) {
 }
 // Table lines keep their columns in a scrolling <pre>; the rest wraps as prose. Text only, never HTML:
 // a terminal can print anything.
-const TABLE = /^\\s*[│┌├└╭╰┃]/;
+// A line that starts with a box character is a table line only with a second │/┃, as a border line or beside
+// another such line: wrapped prose can start with `┃).`.
+const EDGE = /^\\s*[│┌├└╭╰┃]/, BARS = /[│┃].*[│┃]/, BORDER = /^\\s*[\\u2500-\\u257f]+\\s*$/;
 function fill(box, text) {
-  const groups = [];
-  for (const line of text.split('\\n')) {
-    const table = TABLE.test(line), g = groups[groups.length - 1];
+  const groups = [], lines = text.split('\\n'), edge = lines.map(l => EDGE.test(l));
+  lines.forEach((line, i) => {
+    const table = edge[i] && (BARS.test(line) || BORDER.test(line) || !!(edge[i - 1] || edge[i + 1]));
+    const g = groups[groups.length - 1];
     if (g?.table === table) g.lines.push(line); else groups.push({table, lines: [line]});
-  }
+  });
   box.replaceChildren(...groups.map(g => {
     const el = document.createElement(g.table ? 'pre' : 'div');
     el.className = g.table ? 'tbl' : 'prose';
@@ -542,8 +545,19 @@ document.addEventListener('click', e => {
 RULE = re.compile(r"[\u2500-\u257f]+|\u2500+ .+ \u2500+")
 
 
+def beside_row(lines, i):
+    """Whether the nearest non-blank line above or below lines[i] starts with `│`: a table's border line."""
+    for step in (-1, 1):
+        j = i + step
+        while 0 <= j < len(lines) and not lines[j].strip():
+            j += step
+        if 0 <= j < len(lines) and lines[j].lstrip().startswith("\u2502"):
+            return True
+    return False
+
+
 def clean_recap(text):
-    """Plain recap of a pane: no rule lines, and no Claude input box or status footer below them."""
+    """Plain recap of a pane: no rule lines (a table's borders stay), and no Claude input box or status footer."""
     lines = text.split("\n")
     rules = [i for i, l in enumerate(lines) if RULE.fullmatch(l.strip())]
     if len(rules) >= 2:
@@ -552,8 +566,8 @@ def clean_recap(text):
         if first.startswith("\u276f"):
             lines = lines[:rules[-2]]
     out = []
-    for l in lines:
-        if RULE.fullmatch(l.strip()):
+    for i, l in enumerate(lines):
+        if RULE.fullmatch(l.strip()) and not beside_row(lines, i):
             continue
         if l.strip():
             out.append(l)
