@@ -66,8 +66,9 @@ five seconds. For Claude sessions, the recap leaves out the input box and
 status line at the bottom of the terminal. It shows your last prompt as "You
 asked" and Claude's answer as "Latest reply", without tool calls, their
 results and status lines. Older output is under "Earlier output", which you
-expand with a click. Tables keep their columns and scroll sideways. Type a
-prompt and press Enter to send it to that agent. To answer a menu, press `1`,
+expand with a click. Tables keep their columns and scroll sideways. With a mouse, the cursor is
+already in the prompt box; on a touch screen, tap it. Type a prompt and press
+Enter to send it to that agent. To answer a menu, press `1`,
 `2`, `3`, `esc` or `enter`. The `esc` button sends Esc to the agent.
 
 To return to the board, press the Esc key on your keyboard, click the back

@@ -219,7 +219,7 @@ the input before the request, so a second Enter has nothing to send, and restore
 the text if the request fails (not a 204, or no answer) while the input is still
 empty and the same card is the last one opened. A `sending` flag also blocks any
 Enter while a `/prompt` is pending, and a held-down Enter (`e.repeat`) is ignored.
-The recap is fetched from `/read` on open and every 5s while open. It shows
+Opening a card focuses the prompt input only when `matchMedia("(pointer: fine)")` matches, because on a touch screen the keyboard would cover the reply. The recap is fetched from `/read` on open and every 5s while open. It shows
 "You asked" and "Latest reply" on top and an "Earlier output (N lines)"
 `<details>` below; a part that is empty is hidden. The three elements are in the
 page from the start and a refresh only replaces the text inside them, so the

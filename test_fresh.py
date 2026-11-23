@@ -265,4 +265,7 @@ assert json.loads(body) == {"asked": "hi", "reply": "hello", "earlier": ""}, bod
 server.shutdown()
 dash.call = real_call
 
+# Opening a card puts the cursor in the prompt box, except on touch screens where the keyboard would cover the reply.
+assert "matchMedia('(pointer: fine)').matches) $('ptext').focus()" in dash.PAGE
+
 print("ok")

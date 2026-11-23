@@ -491,6 +491,8 @@ function openPanel(key) {
   $('panel').hidden = false;
   document.body.classList.add('steering');
   $('recap').scrollTop = $('recap').scrollHeight;  // a hidden element forgets its scroll position
+  // On a touch screen the keyboard would cover the reply you opened the card to read.
+  if (matchMedia('(pointer: fine)').matches) $('ptext').focus();
   refresh();
   clearInterval(timer);
   timer = setInterval(refresh, 5000);
