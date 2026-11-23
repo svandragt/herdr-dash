@@ -96,7 +96,7 @@ The page can send input to an agent. Every POST route splits the key
 | `/focus/<key>` | none | `agent.focus`, then `mark_seen()` |
 | `/prompt/<key>` | the text | `agent.prompt` with `target` and `text` |
 | `/keys/<key>` | space-separated key names from `KEYS` (`1 2 3 esc enter`) | `agent.send_keys` with `target` and `keys` |
-| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`; answers `clean_recap()` of the text as `text/plain` |
+| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`, or `source: visible` when herdr answers `agent_not_idle` (a working agent's history can be read only while it is idle); answers `clean_recap()` of the text as `text/plain` |
 
 An empty prompt or a key outside `KEYS` is a 400. A herdr call that raises or
 answers with an error is a 502. `/read` is a POST, not a GET, so the `Origin`

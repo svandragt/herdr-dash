@@ -111,4 +111,16 @@ assert dash.clean_recap("\n\nfirst\n\n\n   \nsecond\n\n") == "first\n\nsecond"
 assert dash.clean_recap("") == ""
 assert dash.clean_recap(RULE) == ""
 
+# A working agent's history can't be scrolled, so herdr refuses a long read; fall back to the visible screen.
+asked = []
+def fake_call(host, method, params):
+    asked.append(params["source"])
+    if params["source"] == "recent_unwrapped":
+        return {"error": {"code": "agent_not_idle", "message": "busy"}}
+    return {"result": {"read": {"text": "on screen"}}}
+real_call, dash.call = dash.call, fake_call
+assert dash.read_pane("local", "p1") == "on screen", "a working agent shows its visible screen"
+assert asked == ["recent_unwrapped", "visible"], asked
+dash.call = real_call
+
 print("ok")

@@ -507,6 +507,14 @@ def clean_recap(text):
     return "\n".join(out).strip("\n")
 
 
+def read_pane(host, pane_id):
+    """Recent output as plain text. herdr reads a working agent's history only when idle, so use its screen then."""
+    reply = call(host, "agent.read", {"target": pane_id, "source": "recent_unwrapped", "lines": 60})
+    if reply.get("error", {}).get("code") == "agent_not_idle":
+        reply = call(host, "agent.read", {"target": pane_id, "source": "visible"})
+    return clean_recap(reply["result"]["read"]["text"])
+
+
 def allowed_origin(origin):
     return origin in ORIGINS
 
@@ -572,12 +580,14 @@ class Handler(BaseHTTPRequestHandler):
             "focus": ("agent.focus", {"target": pane_id}),
             "prompt": ("agent.prompt", {"target": pane_id, "text": body.strip()}),
             "keys": ("agent.send_keys", {"target": pane_id, "keys": keys}),
-            "read": ("agent.read", {"target": pane_id, "source": "recent_unwrapped", "lines": 60}),
-        }[route]
+        }.get(route, (None, None))  # /read goes through read_pane()
         try:
             # An error response has no "result", so it lands in the KeyError branch too.
-            result = call(host, method, params)["result"]
-            text = clean_recap(result["read"]["text"]).encode() if route == "read" else b""
+            if route == "read":
+                text = read_pane(host, pane_id).encode()
+            else:
+                call(host, method, params)["result"]
+                text = b""
         except (OSError, ValueError, KeyError):
             self.send_error(502)
             return
