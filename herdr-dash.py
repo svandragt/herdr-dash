@@ -25,9 +25,12 @@ REGISTRY = os.path.expanduser("~/.config/herdr-dash/remotes")
 # Extra addresses besides localhost, e.g. a NetBird IP to reach the board from a phone.
 BIND = ["127.0.0.1"] + os.environ.get("HERDR_DASH_BIND", "").split()
 PORT = 7655
-# POST is only allowed from the board's own page. Origin is checked, not Host: a DNS-rebinding
-# page sends a matching Host but keeps its own domain in Origin.
-ORIGINS = {"http://%s:%d" % (h, PORT) for h in BIND + ["localhost"]}
+# Every request must carry one of the board's own addresses in Host: a DNS-rebinding page
+# resolves its hostname to the board, but the browser still sends that hostname in Host.
+# A POST must also carry one in Origin: a page on another site that reaches the real address
+# sends its own site as Origin.
+HOSTS = {"%s:%d" % (h, PORT) for h in BIND + ["localhost"]}
+ORIGINS = {"http://" + h for h in HOSTS}
 KEYS = {"1", "2", "3", "esc", "enter"}  # what the panel may send to a blocked agent
 GONE_TTL = 30  # seconds a dimmed card lingers after its session exits
 RECONCILE_EVERY = 5
@@ -342,8 +345,11 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  body.steering{overflow:hidden}
  #panel .ph{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#1e2128;border-bottom:1px solid #2a2e36}
  #panel .ph span:last-of-type{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- #recap{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 16px;white-space:pre-wrap;
-        word-break:break-word;line-height:1.5;color:#b4bcc6}
+ #recap{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 16px;color:#b4bcc6}
+ #recap .lbl{margin:14px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c}
+ #recap summary{margin-top:14px;font-size:12px;color:#8b939c;cursor:pointer}
+ #recap .prose{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.6;max-width:70ch}
+ #recap .tbl{margin:6px 0;white-space:pre;overflow-x:auto;font:13px/1.4 ui-monospace,monospace}
  #panel .pf{padding:10px 16px;background:#1e2128;border-top:1px solid #2a2e36}
  #panel .in{display:flex;gap:6px;flex-wrap:wrap}
  #ptext{flex:1;min-width:140px;font-size:16px;background:#14161a;color:inherit;border:1px solid #3a3f48;
@@ -355,7 +361,11 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 <div id=board></div>
 <div id=panel hidden>
  <div class=ph><button id=pclose aria-label=Back title=Back>&larr;</button><span class=ic id=pic></span><b id=pname></b><span id=ptitle></span></div>
- <div id=recap></div>
+ <div id=recap>
+  <div id=ask hidden><div class=lbl>You asked</div><div id=askb></div></div>
+  <div id=rep hidden><div class=lbl>Latest reply</div><div id=repb></div></div>
+  <details id=earl hidden><summary id=earls></summary><div id=earlb></div></details>
+ </div>
  <div class=pf><div class=in><input id=ptext placeholder="Send a prompt" autocomplete=off>
   <span id=pkeys><button data-k=1>1</button> <button data-k=2>2</button> <button data-k=3>3</button>
   <button data-k=esc>esc</button> <button data-k=enter>enter</button></span></div>
@@ -428,18 +438,50 @@ async function act(route, body) {
     if (k == target) note(route, route + ' failed: no answer');
   }
 }
+// Table lines keep their columns in a scrolling <pre>; the rest wraps as prose. Text only, never HTML:
+// a terminal can print anything.
+const TABLE = /^\\s*[│┌├└╭╰┃]/;
+function fill(box, text) {
+  const groups = [];
+  for (const line of text.split('\\n')) {
+    const table = TABLE.test(line), g = groups[groups.length - 1];
+    if (g?.table === table) g.lines.push(line); else groups.push({table, lines: [line]});
+  }
+  box.replaceChildren(...groups.map(g => {
+    const el = document.createElement(g.table ? 'pre' : 'div');
+    el.className = g.table ? 'tbl' : 'prose';
+    el.textContent = g.lines.join('\\n');
+    return el;
+  }));
+}
+function show(id, text) {  // an empty part is hidden
+  $(id).hidden = !text;
+  if (text) fill($(id + 'b'), text);
+}
+let shown = '';  // the last /read answer on screen
+function clearRecap() {
+  for (const id of ['ask', 'rep', 'earl']) $(id).hidden = true;
+  $('earl').open = false;
+  shown = '';
+}
 async function refresh() {
   const k = target, r = await act('read', '');
   if (!r?.ok) return;
   const t = await r.text();
-  if (k != target || t == $('recap').textContent) return;  // unchanged: keep the reader's selection
+  if (k != target || t == shown) return;  // unchanged: keep the reader's selection
   const box = $('recap'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
-  box.textContent = t;  // text, never HTML: a terminal can print anything
+  const j = JSON.parse(t), n = j.earlier.split('\\n').length;
+  shown = t;
+  show('ask', j.asked);
+  show('rep', j.reply);
+  show('earl', j.earlier);  // the <details> element stays, so it keeps its open state
+  $('earls').textContent = `Earlier output (${n} line${n == 1 ? '' : 's'})`;
   if (atBottom) box.scrollTop = box.scrollHeight;  // reading further up must not be yanked down
 }
 function openPanel(key) {
   if (key != last) {  // never carry typed text over to another agent
-    $('recap').textContent = $('perr').textContent = $('ptext').value = '';
+    $('perr').textContent = $('ptext').value = '';
+    clearRecap();
     last = key;
   }
   history.pushState({card: key}, '');  // the back button or gesture closes the view
@@ -518,6 +560,51 @@ def clean_recap(text):
     return "\n".join(out).strip("\n")
 
 
+# What Claude's screen starts a line with: the prompt (`❯ 1. Yes` is a menu option, not a prompt),
+# a tool call (`● Name(`), a status line (spinner, goal, recap, message notice) and a tool result (`⎿`).
+PROMPT = re.compile(r"❯[  ]+(?!\d+\. )\S")
+TOOL_CALL = re.compile(r"● [\w.:-]+\(")
+STATUS = re.compile(r"[✻✶✢✳✽✦※◯›*·] ")
+RESULT = "⎿"
+_COUNT = r"\d+ (?:shell commands?|commands?|files?|patterns?|searches|directories|URLs?)"
+SUMMARY = re.compile(rf"\s*(?:Ran|Read|Searched for|Listed|Edited|Wrote|Fetched) {_COUNT}"
+                     rf"(?:, (?:ran|read|searched for|listed|edited|wrote|fetched) {_COUNT})*(?: \(ctrl\+o to expand\))?")
+
+
+def split_recap(text):
+    """Split a cleaned recap into the last prompt, the reply to it and the output before it.
+    The reply keeps the assistant's text and drops tool calls, their results and status lines;
+    a line it is unsure about stays. Without a prompt (another agent) all of it is the reply."""
+    lines = text.split("\n")
+    p = next((i for i in range(len(lines) - 1, -1, -1) if PROMPT.match(lines[i])), None)
+    if p is None:
+        return {"asked": "", "reply": text, "earlier": ""}
+    j = p + 1  # the prompt goes on over indented lines, blank ones included
+    while j < len(lines) and (not lines[j].strip() or lines[j][0] == " " and not lines[j].lstrip().startswith(RESULT)):
+        j += 1
+    unindent = lambda l: re.sub(r"^ {1,2}", "", l)  # Claude indents a block's lines under its marker
+    asked = "\n".join([re.sub(r"^❯[  ]+", "", lines[p])] + [unindent(l) for l in lines[p + 1:j]])
+    reply, skip = [], False  # skip: inside a tool call or status line, whose indented lines are noise
+    for k in range(j, len(lines)):
+        l = lines[k]
+        if not l.strip():
+            reply.append("")
+        elif l.startswith("● "):
+            # `● Name(args)`, or any title that a result line follows directly
+            skip = bool(TOOL_CALL.match(l)) or "".join(lines[k + 1:k + 2]).lstrip().startswith(RESULT)
+            if not skip:
+                reply.append(l[2:])
+        elif STATUS.match(l) or l.lstrip().startswith(RESULT):
+            skip = True
+        elif not (skip and l.startswith("  ")):
+            skip = False
+            if not SUMMARY.fullmatch(l):
+                reply.append(unindent(l))
+    return {"asked": asked.strip("\n"),
+            "reply": re.sub(r"\n{3,}", "\n\n", "\n".join(reply)).strip("\n"),
+            "earlier": "\n".join(lines[:p]).strip("\n")}
+
+
 def read_pane(host, pane_id):
     """Recent output as plain text. herdr reads a working agent's history only when idle, so use its screen then."""
     reply = call(host, "agent.read", {"target": pane_id, "source": "recent_unwrapped", "lines": 60})
@@ -537,6 +624,10 @@ def body_length(header):
     return n
 
 
+def allowed_host(host):
+    return host in HOSTS
+
+
 def allowed_origin(origin):
     return origin in ORIGINS
 
@@ -546,6 +637,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if not allowed_host(self.headers.get("Host")):
+            self.send_error(403)
+            return
         if self.path == "/":
             body = PAGE.encode()
             self.send_response(200)
@@ -581,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
                 subscribers.remove(q)
 
     def do_POST(self):
-        if not allowed_origin(self.headers.get("Origin")):
+        if not (allowed_host(self.headers.get("Host")) and allowed_origin(self.headers.get("Origin"))):
             self.send_error(403)
             return
         route, _, key = self.path[1:].partition("/")
@@ -606,7 +700,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # An error response has no "result", so it lands in the KeyError branch too.
             if route == "read":
-                text = read_pane(host, pane_id).encode()
+                text = json.dumps(split_recap(read_pane(host, pane_id))).encode()
             else:
                 call(host, method, params)["result"]
                 text = b""
@@ -617,7 +711,7 @@ class Handler(BaseHTTPRequestHandler):
             mark_seen(key)
         self.send_response(200 if route == "read" else 204)
         if route == "read":
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(text)))
         self.end_headers()
         self.wfile.write(text)

@@ -96,14 +96,15 @@ The page can send input to an agent. Every POST route splits the key
 | `/focus/<key>` | none | `agent.focus`, then `mark_seen()` |
 | `/prompt/<key>` | the text | `agent.prompt` with `target` and `text` |
 | `/keys/<key>` | space-separated key names from `KEYS` (`1 2 3 esc enter`) | `agent.send_keys` with `target` and `keys` |
-| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`, or `source: visible` when herdr answers `agent_not_idle` (a working agent's history can be read only while it is idle); answers `clean_recap()` of the text as `text/plain` |
+| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`, or `source: visible` when herdr answers `agent_not_idle` (a working agent's history can be read only while it is idle); answers `split_recap(clean_recap(text))` as `application/json`: `{"asked", "reply", "earlier"}` |
 
 An empty prompt, a key outside `KEYS`, or a `Content-Length` that is not a number,
 is negative or is over 64 KiB (`MAX_BODY`) is a 400. `body_length()` checks the length
 before the handler reads the body, because `rfile.read(-1)` and a length larger than
 the data both block until the client closes the connection. A herdr call that raises or
-answers with an error is a 502. `/read` is a POST, not a GET, so the `Origin`
-check covers it: a GET would let a DNS-rebinding page read terminal output. The parameter
+answers with an error is a 502. `/read` is a POST, so it needs a matching `Origin`
+as well as `Host`; the `Host` check alone already stops a DNS-rebinding page from
+reading terminal output. The parameter
 names come from `herdr api schema --json` (`AgentPromptParams`,
 `AgentSendKeysParams`, `AgentReadParams`); the read text is
 `result.read.text` in the response.
@@ -123,15 +124,41 @@ lines to one and trims blank lines at both ends.
 `recent_unwrapped` joins the terminal's soft wraps, so the page wraps lines to
 its own width.
 
-**Origin check.** `do_POST` first compares the `Origin` header with `ORIGINS`,
-`http://<address>:7655` for each `BIND` address plus `localhost`, and answers
-403 on a missing or different value. This stops other web pages in your browser
-from steering sessions. `Host` is not used: with DNS rebinding the attacker's
-domain resolves to the board's address, the browser sends a matching `Host`, and
-the check would pass. `Origin` still names the attacker's domain. A hostname such
-as a tailnet name is allowed only when it is listed in `HERDR_DASH_BIND`.
-Browsers send `Origin` on POSTs, but a client that omits it (curl, a launcher)
-gets 403.
+**`split_recap(text)`** splits the cleaned text for the page. `asked` is the last
+Claude prompt: a line starting with `❯` and text, plus the indented lines that
+follow it, blank ones included, minus the `❯`. A `❯ 1. Yes` line is a menu
+option, not a prompt. `reply` is everything after it without the lines that are
+not the assistant's words:
+
+- A `● Name(` line, or a `● ` line that a `⎿` line follows directly, is a tool
+  call. It and the indented lines under it (the arguments and the `⎿` results)
+  are dropped, until a line that is not indented by at least two spaces.
+- A line that starts with a spinner or status mark (`✻ ✶ ✢ ✳ ✽ * ·`, `✦` tips,
+  `※` recaps, `◯` goal notices, `›` message notices) is dropped with its
+  indented lines.
+- A summary such as `Ran 3 shell commands` or `Read 2 files` is dropped.
+- The rest stays: `● ` is removed from the first line of each block, and up to
+  two spaces of indent from the other lines, so tables and lists line up.
+
+`earlier` is the cleaned text before that prompt, unchanged. Without a prompt
+(another agent, a fresh session) `asked` and `earlier` are empty and `reply` is
+the whole text. The split keeps a line when in doubt: a tool result line indented
+by less than two spaces comes through as text, and so does a `● ` title that has
+no `Name(` and no `⎿` line directly under it.
+
+**Host and Origin checks.** `do_GET` and `do_POST` first compare the `Host`
+header with `HOSTS`, `<address>:7655` for each `BIND` address plus `localhost`,
+and answer 403 on a missing or different value. This blocks DNS rebinding: the
+attacker's domain resolves to the board's address, but the browser sends the
+attacker's hostname in `Host`, and that is not in the list. `do_POST` then
+compares the `Origin` header with `ORIGINS`, `http://` plus each entry of
+`HOSTS`, and answers 403 on a missing or different value. This blocks a page on
+another site that reaches the real address: the browser sends that page's own
+site as `Origin`. A hostname such as a tailnet name is allowed only when it is
+listed in `HERDR_DASH_BIND`. Browsers send `Origin` on POSTs, but a client that
+omits it (curl, a launcher) gets 403. The client sets both headers, so anything
+that can reach the port can send them: the checks stop other websites, not other
+programs.
 
 ## Remotes
 
@@ -192,9 +219,17 @@ the input before the request, so a second Enter has nothing to send, and restore
 the text if the request fails (not a 204, or no answer) while the input is still
 empty and the same card is the last one opened. A `sending` flag also blocks any
 Enter while a `/prompt` is pending, and a held-down Enter (`e.repeat`) is ignored.
-The recap is a `<div>` in the page font with `white-space: pre-wrap`,
-fetched from `/read` on open and every 5s while open. It scrolls to the bottom
-on a refresh only if it was already at the bottom, so you can read further up.
+The recap is fetched from `/read` on open and every 5s while open. It shows
+"You asked" and "Latest reply" on top and an "Earlier output (N lines)"
+`<details>` below; a part that is empty is hidden. The three elements are in the
+page from the start and a refresh only replaces the text inside them, so the
+`<details>` keeps its open state. A refresh whose JSON equals the last one does
+nothing, which keeps the reader's text selection. Each text part is cut into
+groups: consecutive lines that start with `│ ┌ ├ └ ╭ ╰ ┃` (after leading spaces)
+become one `<pre class=tbl>` (`white-space: pre`, scrolls sideways) and the other
+lines become `white-space: pre-wrap` prose at 15px, line height 1.6 and at most
+70ch wide. The recap scrolls to the bottom on a refresh only if it was already at
+the bottom, so you can read further up.
 `#panel[hidden]` needs its own `display:none` rule, because `display:flex` on
 `#panel` would otherwise override the `hidden` attribute. While the view is
 open `body` gets `overflow:hidden` so the board does not scroll behind it.
@@ -212,8 +247,8 @@ does not reopen the view.
 Opening a card other than the last one opened clears the input and recap, so
 text typed for one agent is never sent to another. Reopening the same card keeps
 the text: `last` remembers the card across a close, while `target` is null when
-no view is open and makes in-flight `/read` and `/keys` responses for a closed
-view get dropped.
+no view is open and makes in-flight `/read`, `/keys` and `/prompt` responses for a
+closed view get dropped.
 
 **The error line** (`#perr`) shows the last failed request. `act()` tags it with the
 route that wrote it. A successful `/keys` or `/prompt` clears it. A successful `/read`

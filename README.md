@@ -36,9 +36,13 @@ anyone on that network can see your sessions, read their recent output, focus
 panes and send them prompts and key presses. Start the board after the network
 is up; it skips an address that isn't there yet.
 
-The board accepts actions only from its own page, opened at `127.0.0.1`,
-`localhost` or an address in `HERDR_DASH_BIND`. A page opened at any other
-name can read the board but not steer it.
+The board answers only at `127.0.0.1`, `localhost` or an address in
+`HERDR_DASH_BIND`. To use a hostname, add it to `HERDR_DASH_BIND`. A request
+for any other name gets a 403, and the board accepts actions only from its own
+page.
+
+The `Origin` check stops other websites, not other programs: anything that
+can reach the port can send the header.
 
 ## How it works
 
@@ -59,9 +63,12 @@ minute, then disappears.
 Click a card to open it full screen. The view shows the session's icon, name
 and title, and a recap of its recent output as plain text, refreshed every
 five seconds. For Claude sessions, the recap leaves out the input box and
-status line at the bottom of the terminal. Type a prompt and press Enter to
-send it to that agent. To answer a menu, press `1`, `2`, `3`, `esc` or
-`enter`. The `esc` button sends Esc to the agent.
+status line at the bottom of the terminal. It shows your last prompt as "You
+asked" and Claude's answer as "Latest reply", without tool calls, their
+results and status lines. Older output is under "Earlier output", which you
+expand with a click. Tables keep their columns and scroll sideways. Type a
+prompt and press Enter to send it to that agent. To answer a menu, press `1`,
+`2`, `3`, `esc` or `enter`. The `esc` button sends Esc to the agent.
 
 To return to the board, press the Esc key on your keyboard, click the back
 arrow, or use the browser's back button or gesture. If you reopen the same
