@@ -309,7 +309,7 @@ def reconcile():
 PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <style>
- body{margin:0;font:14px system-ui;background:#14161a;color:#e6e6e6}
+ body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";background:#14161a;color:#e6e6e6}
  /* rtl flips the grid so the most actionable column sits on the right, nearest
     the pane you just came from; .col puts text back the right way round. */
  .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px;direction:rtl}
@@ -587,21 +587,11 @@ SUMMARY = re.compile(rf"\s*(?:Ran|Read|Searched for|Listed|Edited|Wrote|Fetched)
                      rf"(?:, (?:ran|read|searched for|listed|edited|wrote|fetched) {_COUNT})*(?: \(ctrl\+o to expand\))?")
 
 
-def split_recap(text):
-    """Split a cleaned recap into the last prompt, the reply to it and the output before it.
-    The reply keeps the assistant's text and drops tool calls, their results and status lines;
-    a line it is unsure about stays. Without a prompt (another agent) all of it is the reply."""
-    lines = text.split("\n")
-    p = next((i for i in range(len(lines) - 1, -1, -1) if PROMPT.match(lines[i])), None)
-    if p is None:
-        return {"asked": "", "reply": text, "earlier": ""}
-    j = p + 1  # the prompt goes on over indented lines, blank ones included
-    while j < len(lines) and (not lines[j].strip() or lines[j][0] == " " and not lines[j].lstrip().startswith(RESULT)):
-        j += 1
+def reply_text(lines):
+    """The assistant's text from these lines, without tool calls, their results and status lines."""
     unindent = lambda l: re.sub(r"^ {1,2}", "", l)  # Claude indents a block's lines under its marker
-    asked = "\n".join([re.sub(r"^❯[  ]+", "", lines[p])] + [unindent(l) for l in lines[p + 1:j]])
     reply, skip = [], False  # skip: inside a tool call or status line, whose indented lines are noise
-    for k in range(j, len(lines)):
+    for k in range(len(lines)):
         l = lines[k]
         if not l.strip():
             reply.append("")
@@ -616,8 +606,24 @@ def split_recap(text):
             skip = False
             if not SUMMARY.fullmatch(l):
                 reply.append(unindent(l))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(reply)).strip("\n")
+
+
+def split_recap(text):
+    """Split a cleaned recap into the last prompt, the reply to it and the output before it.
+    The reply keeps the assistant's text and drops tool calls, their results and status lines;
+    a line it is unsure about stays. Without a prompt, all of it is the reply."""
+    lines = text.split("\n")
+    p = next((i for i in range(len(lines) - 1, -1, -1) if PROMPT.match(lines[i])), None)
+    if p is None:  # a busy pane's screen often has no prompt left on it
+        return {"asked": "", "reply": reply_text(lines), "earlier": ""}
+    j = p + 1  # the prompt goes on over indented lines, blank ones included
+    while j < len(lines) and (not lines[j].strip() or lines[j][0] == " " and not lines[j].lstrip().startswith(RESULT)):
+        j += 1
+    unindent = lambda l: re.sub(r"^ {1,2}", "", l)  # Claude indents a block's lines under its marker
+    asked = "\n".join([re.sub(r"^❯[  ]+", "", lines[p])] + [unindent(l) for l in lines[p + 1:j]])
     return {"asked": asked.strip("\n"),
-            "reply": re.sub(r"\n{3,}", "\n\n", "\n".join(reply)).strip("\n"),
+            "reply": reply_text(lines[j:]),
             "earlier": "\n".join(lines[:p]).strip("\n")}
 
 

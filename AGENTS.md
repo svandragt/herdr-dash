@@ -143,8 +143,9 @@ not the assistant's words:
   two spaces of indent from the other lines, so tables and lists line up.
 
 `earlier` is the cleaned text before that prompt, unchanged. Without a prompt
-(another agent, a fresh session) `asked` and `earlier` are empty and `reply` is
-the whole text. The split keeps a line when in doubt: a tool result line indented
+(another agent, a fresh session, or a busy pane whose prompt has scrolled off
+its visible screen) `asked` and `earlier` are empty and `reply` is the whole
+text, filtered the same way by `reply_text()`. The split keeps a line when in doubt: a tool result line indented
 by less than two spaces comes through as text, and so does a `● ` title that has
 no `Name(` and no `⎿` line directly under it.
 

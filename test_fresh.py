@@ -286,4 +286,10 @@ dash.call = real_call
 # Opening a card puts the cursor in the prompt box, except on touch screens where the keyboard would cover the reply.
 assert "matchMedia('(pointer: fine)').matches) $('ptext').focus()" in dash.PAGE
 
+# A busy pane's screen often has no prompt left on it; its tool calls and status lines still go.
+busy = dash.split_recap("I corrected the Test plan.\n\n✻ Waiting for 1 background agent to finish\n\n"
+                        "› Message from @qa (ctrl+o to expand)\n\n● Updating PR body\n  ⎿ \u00a0$ gh pr edit 1209\n"
+                        "     --body-file x.md\n\n✢ Orbiting… (19s)")
+assert busy == {"asked": "", "reply": "I corrected the Test plan.", "earlier": ""}, busy
+
 print("ok")
