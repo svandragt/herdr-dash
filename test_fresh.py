@@ -110,6 +110,31 @@ assert dash.clean_recap(f"one\n{RULE}\ntwo\n") == "one\ntwo"
 assert dash.clean_recap("\n\nfirst\n\n\n   \nsecond\n\n") == "first\n\nsecond"
 assert dash.clean_recap("") == ""
 assert dash.clean_recap(RULE) == ""
+# The cut needs Claude's input box: the first line between the last two rules starts with the prompt.
+# The prompt carries typed text or a placeholder, and Claude follows it with a no-break space.
+typed = f"{body}\n{RULE}\n❯\u00a0Try \"how do I log an error?\"\n{RULE}\n  7ba1a27e  Opus 5.5\n"
+assert dash.clean_recap(typed) == dash.clean_recap(body), "a prompt line with text is still the input box"
+# A table has rules but no input box, so its rows stay.
+table = "┌───┬───┐\n│ a │ b │\n├───┼───┤\n│ 1 │ 2 │\n└───┴───┘\n"
+assert dash.clean_recap(table) == "│ a │ b │\n│ 1 │ 2 │", dash.clean_recap(table)
+# A box at the start must not empty the recap.
+box = "╭──────────╮\n│ - old    │\n│ + new    │\n╰──────────╯\nthe edit is shown above\n"
+assert dash.clean_recap(box) == "│ - old    │\n│ + new    │\nthe edit is shown above", dash.clean_recap(box)
+# A permission dialog has no input box, so the question and options stay.
+dialog = """\
+╭──────────────────────────────╮
+│ Bash command                 │
+│   git push origin main       │
+│ Do you want to proceed?      │
+│ ❯ 1. Yes                     │
+│   2. No                      │
+╰──────────────────────────────╯
+"""
+asked_to = dash.clean_recap(dialog)
+assert "Do you want to proceed?" in asked_to and "❯ 1. Yes" in asked_to and "2. No" in asked_to, asked_to
+# A dialog between two rules has no prompt line first, so it is not cut either.
+ruled = f"{body}\n{RULE}\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n{RULE}\n"
+assert "2. No" in dash.clean_recap(ruled), dash.clean_recap(ruled)
 
 # A working agent's history can't be scrolled, so herdr refuses a long read; fall back to the visible screen.
 asked = []
@@ -122,5 +147,14 @@ real_call, dash.call = dash.call, fake_call
 assert dash.read_pane("local", "p1") == "on screen", "a working agent shows its visible screen"
 assert asked == ["recent_unwrapped", "visible"], asked
 dash.call = real_call
+
+# A request body is read before it is checked, so its declared length must be sane.
+assert dash.body_length(None) == 0 and dash.body_length("12") == 12 and dash.body_length("65536") == 65536
+for bad in ("-1", "65537", "x", "1e3"):
+    try:
+        dash.body_length(bad)
+    except ValueError:
+        continue
+    raise AssertionError("Content-Length %r must be rejected" % bad)
 
 print("ok")

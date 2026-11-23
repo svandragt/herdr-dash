@@ -98,7 +98,10 @@ The page can send input to an agent. Every POST route splits the key
 | `/keys/<key>` | space-separated key names from `KEYS` (`1 2 3 esc enter`) | `agent.send_keys` with `target` and `keys` |
 | `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`, or `source: visible` when herdr answers `agent_not_idle` (a working agent's history can be read only while it is idle); answers `clean_recap()` of the text as `text/plain` |
 
-An empty prompt or a key outside `KEYS` is a 400. A herdr call that raises or
+An empty prompt, a key outside `KEYS`, or a `Content-Length` that is not a number,
+is negative or is over 64 KiB (`MAX_BODY`) is a 400. `body_length()` checks the length
+before the handler reads the body, because `rfile.read(-1)` and a length larger than
+the data both block until the client closes the connection. A herdr call that raises or
 answers with an error is a 502. `/read` is a POST, not a GET, so the `Origin`
 check covers it: a GET would let a DNS-rebinding page read terminal output. The parameter
 names come from `herdr api schema --json` (`AgentPromptParams`,
@@ -108,13 +111,15 @@ names come from `herdr api schema --json` (`AgentPromptParams`,
 **`clean_recap(text)`** turns the pane text into a readable recap. A rule line
 is a line that is only box-drawing characters (U+2500 to U+257F), or a run of
 `─` with a label after it: Claude puts the session name in the input box's top
-rule, so that rule has letters. If the text has at least two rule lines, the
-function cuts everything from the second-to-last one, which removes Claude's
-input box and the status footer below it. It then drops the remaining rule
-lines, collapses runs of blank lines to one and trims blank lines at both ends.
-Only Claude draws that box. Another agent's pane has no rule lines, so it keeps
-its footer text. A table border above the box is also a rule line, but it is
-only dropped: the box's own two rules are the last two, so they start the cut.
+rule, so that rule has letters. The function cuts only when the last two rule
+lines enclose Claude's input box: the first non-blank line between them starts
+with `❯`, the prompt, which can carry typed text or a placeholder. It then cuts
+everything from the second-to-last rule, which removes the box and the status
+footer below it. Any other pair of rules is not cut: a table, a `╭──╮` box such
+as a diff, or another agent's box keeps its rows. A permission dialog box has
+no prompt line, so its question and options stay, and so does the footer below it. In
+every case the function drops the remaining rule lines, collapses runs of blank
+lines to one and trims blank lines at both ends.
 `recent_unwrapped` joins the terminal's soft wraps, so the page wraps lines to
 its own width.
 
@@ -182,8 +187,12 @@ it with `position:fixed; inset:0`. The SSE handler replaces `#board`'s
 typing. The view is a flex column: a header (back button, the target's icon,
 name and title, updated on each push from the new card data without touching
 the input or the recap), the recap filling the middle, and a footer with a text
-input (Enter sends to `/prompt` and clears on a 204) and buttons that POST
-`/keys`. The recap is a `<div>` in the page font with `white-space: pre-wrap`,
+input and buttons that POST `/keys`. Enter sends the text to `/prompt`. It clears
+the input before the request, so a second Enter has nothing to send, and restores
+the text if the request fails (not a 204, or no answer) while the input is still
+empty and the same card is the last one opened. A `sending` flag also blocks any
+Enter while a `/prompt` is pending, and a held-down Enter (`e.repeat`) is ignored.
+The recap is a `<div>` in the page font with `white-space: pre-wrap`,
 fetched from `/read` on open and every 5s while open. It scrolls to the bottom
 on a refresh only if it was already at the bottom, so you can read further up.
 `#panel[hidden]` needs its own `display:none` rule, because `display:flex` on
@@ -205,6 +214,11 @@ text typed for one agent is never sent to another. Reopening the same card keeps
 the text: `last` remembers the card across a close, while `target` is null when
 no view is open and makes in-flight `/read` and `/keys` responses for a closed
 view get dropped.
+
+**The error line** (`#perr`) shows the last failed request. `act()` tags it with the
+route that wrote it. A successful `/keys` or `/prompt` clears it. A successful `/read`
+clears it only when a failed `/read` wrote it, so the 5s refresh never wipes a
+prompt's error.
 
 ## Desktop launcher
 

@@ -414,15 +414,18 @@ const head = () => {
   $('pname').textContent = c.icon_name;
   $('ptitle').textContent = c.title || c.pane_id;
 };
+// The error line is tagged with the route that wrote it: the 5s read must not wipe a prompt's error.
+const note = (route, msg) => { $('perr').textContent = msg; $('perr').dataset.route = route; };
 async function act(route, body) {
   const k = target;
   try {
     const r = await fetch('/' + route + '/' + k, {method: 'POST', body});
-    if (k != target) return;
-    $('perr').textContent = r.ok ? '' : `${route} failed (${r.status})`;
+    if (k != target) return r;  // the caller still learns whether it worked
+    if (!r.ok) note(route, `${route} failed (${r.status})`);
+    else if (route != 'read' || $('perr').dataset.route == 'read') note(route, '');
     return r;
   } catch (x) {
-    if (k == target) $('perr').textContent = route + ' failed: no answer';
+    if (k == target) note(route, route + ' failed: no answer');
   }
 }
 async function refresh() {
@@ -463,11 +466,16 @@ $('pclose').onclick = back;
 addEventListener('popstate', closePanel);
 document.addEventListener('keydown', e => e.key == 'Escape' && target && !e.isComposing && back());
 $('pkeys').onclick = e => e.target.dataset.k && act('keys', e.target.dataset.k);
+let sending = false;  // a second Enter while /prompt is pending must not send the text again
 $('ptext').onkeydown = async e => {
-  const v = $('ptext').value;
-  if (e.key != 'Enter' || e.isComposing || !v.trim()) return;
+  const v = $('ptext').value, k = target;
+  if (e.key != 'Enter' || e.repeat || e.isComposing || sending || !v.trim()) return;
+  sending = true;
+  $('ptext').value = '';
   const r = await act('prompt', v);
-  if (r?.status == 204 && $('ptext').value == v) $('ptext').value = '';
+  sending = false;
+  // restore only for the same card: another card's input must never get this text
+  if (r?.status != 204 && last == k && !$('ptext').value) $('ptext').value = v;
 };
 document.addEventListener('click', e => {
   const tab = e.target.closest('.tab');
@@ -494,8 +502,11 @@ def clean_recap(text):
     """Plain recap of a pane: no rule lines, and no Claude input box or status footer below them."""
     lines = text.split("\n")
     rules = [i for i, l in enumerate(lines) if RULE.fullmatch(l.strip())]
-    if len(rules) >= 2:  # the input box sits between the last two rules
-        lines = lines[:rules[-2]]
+    if len(rules) >= 2:
+        # Claude's input box has a prompt line between the last two rules; a table or dialog has not.
+        first = next((l.strip() for l in lines[rules[-2] + 1:rules[-1]] if l.strip()), "")
+        if first.startswith("\u276f"):
+            lines = lines[:rules[-2]]
     out = []
     for l in lines:
         if RULE.fullmatch(l.strip()):
@@ -513,6 +524,17 @@ def read_pane(host, pane_id):
     if reply.get("error", {}).get("code") == "agent_not_idle":
         reply = call(host, "agent.read", {"target": pane_id, "source": "visible"})
     return clean_recap(reply["result"]["read"]["text"])
+
+
+MAX_BODY = 64 * 1024
+
+
+def body_length(header):
+    """The Content-Length to read; ValueError when it is not a number, negative or over MAX_BODY."""
+    n = int(header or 0)
+    if not 0 <= n <= MAX_BODY:
+        raise ValueError(n)
+    return n
 
 
 def allowed_origin(origin):
@@ -568,7 +590,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+            body = self.rfile.read(body_length(self.headers.get("Content-Length"))).decode()
         except ValueError:  # a bad length or non-UTF-8 text
             self.send_error(400)
             return
