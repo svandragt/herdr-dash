@@ -55,12 +55,24 @@ actually moves. That rate limit is a UX decision (a card flapping between
 columns faster than you can read it is worse than a stale one), not a
 performance one.
 
-`lock` guards `panes` and `subscribers` only at serialisation/subscribe points.
+`lock` guards `panes` and `subscribers` only at serialisation/subscribe points,
+and the assignment of a new card's index in `icons`.
 Mutations to `panes` happen unlocked from `reader` and `reconcile` — safe by
 CPython dict atomicity, not by design.
 
 **Card lifecycle:** live → `gone` (dimmed, 30s `threading.Timer`) → forgotten.
 `forget()` re-checks `gone` because a new agent may have claimed the pane.
+
+**Icons:** each card shows an animal on a coloured background to tell similar
+sessions apart. `card()` gives a new key the lowest index not used in `icons`, and
+`forget()` frees it, so a card keeps its icon while it lives (also while dimmed)
+and the next new card reuses a freed one. Index `i` maps to `ANIMALS[i % 12]` and
+`COLOURS[i % 7]`. 12 and 7 share no factor, so 84 consecutive indexes give 84
+different pairs and the first 7 cards differ in both animal and colour. The
+lowest free index is used, not a hash of the key, because a hash often gives two
+cards the same pair. Hidden cards stay in `panes`, so they hold an index too. The
+card JSON carries `icon`, `icon_name` ("blue fox") and `icon_bg`. Icons reset
+when the board restarts.
 
 **Title handling** is the one piece of real cleverness. Claude overwrites its
 session summary with live activity ("thinking", "running Bash") while working,
@@ -73,6 +85,35 @@ they are blocked. It filters on the server, so the page title, tab counts and
 dock badge all ignore hidden cards. The card stays in `panes`, which keeps its
 `fresh` flag and title history. A worktree folder that starts with `.` does not
 hide a card, because herdr creates every worktree that way.
+
+## Steering
+
+The page can send input to an agent. Every POST route splits the key
+`<host>:<pane_id>` and calls herdr through `call()`:
+
+| Route | Body | herdr call |
+|---|---|---|
+| `/focus/<key>` | none | `agent.focus`, then `mark_seen()` |
+| `/prompt/<key>` | the text | `agent.prompt` with `target` and `text` |
+| `/keys/<key>` | space-separated key names from `KEYS` (`1 2 3 esc enter`) | `agent.send_keys` with `target` and `keys` |
+| `/read/<key>` | none | `agent.read` with `source: recent` and `lines: 20`; answers the text as `text/plain` |
+
+An empty prompt or a key outside `KEYS` is a 400. A herdr call that raises or
+answers with an error is a 502. `/read` is a POST, not a GET, so the `Origin`
+check covers it: a GET would let a DNS-rebinding page read terminal output. The parameter
+names come from `herdr api schema --json` (`AgentPromptParams`,
+`AgentSendKeysParams`, `AgentReadParams`); the read text is
+`result.read.text` in the response.
+
+**Origin check.** `do_POST` first compares the `Origin` header with `ORIGINS`,
+`http://<address>:7655` for each `BIND` address plus `localhost`, and answers
+403 on a missing or different value. This stops other web pages in your browser
+from steering sessions. `Host` is not used: with DNS rebinding the attacker's
+domain resolves to the board's address, the browser sends a matching `Host`, and
+the check would pass. `Origin` still names the attacker's domain. A hostname such
+as a tailnet name is allowed only when it is listed in `HERDR_DASH_BIND`.
+Browsers send `Origin` on POSTs, but a client that omits it (curl, a launcher)
+gets 403.
 
 ## Remotes
 
@@ -112,13 +153,27 @@ The SSE handler rebuilds the whole board on every push: one strip of four
 columns per host, local first. With more than one host, a tab bar picks the
 visible strip; the choice lives in `localStorage`, and an inactive tab shows how
 many of its cards are blocked so a remote that needs you still surfaces.
-Card titles come from herdr and are interpolated unescaped; that's acceptable
-only because the server binds to `127.0.0.1` (plus any `HERDR_DASH_BIND` address
-on your own private network) and the data is your own terminal titles.
-Clicking a card POSTs `/focus/<key>`, which calls `agent.focus` and clears the card's `fresh` flag. The violet outline means *this card
+Card titles, folder names, hosts and keys come from herdr and the page puts them
+in `innerHTML` through `esc()`. A script injected through a pane title would
+pass the `Origin` check and could steer every session, so every server value
+goes through `esc()`, including the icon fields. The compose panel and its recap
+use `textContent`.
+Clicking a card POSTs `/focus/<key>`, which calls `agent.focus` and clears the card's `fresh` flag, and opens the compose panel for that card. The violet outline means *this card
 changed status and you haven't looked at the pane since* — it clears either
 on that click or when herdr reports the pane focused, so focusing a pane
 directly in your terminal counts as seeing it.
+
+**The compose panel** (`#panel`) is a sibling of `#board`, not part of it. The SSE
+handler replaces `#board`'s `innerHTML` on every push, so anything inside would
+lose the text you are typing. The panel shows the target's icon, name and title
+(updated on each push from the new card data, without touching the input or the
+recap), a `<pre>` recap fetched from `/read` on open and every 5s while open,
+a text input (Enter sends to `/prompt` and clears on a 204), buttons that POST
+`/keys`, and a close button that stops the timer. Opening it for a different
+card clears the input and recap, so text typed for one agent is never sent to
+another. While it is open, `#board` gets bottom padding so the panel does not
+cover the last cards. Clicks in the panel do not reach the card handler,
+because that handler looks for a `.card` ancestor and the panel has none.
 
 ## Desktop launcher
 

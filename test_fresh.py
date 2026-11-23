@@ -60,4 +60,29 @@ wt = {**pane("idle"), "pane_id": "p3", "terminal_title_stripped": "BH-1 thing", 
 dash.absorb("local", wt)
 assert "local:p3" in [c["key"] for c in dash.board()], "dot worktree folders show"
 
+# Only the board's own addresses may POST; any other page in the browser must get a 403.
+for origin in ("http://127.0.0.1:7655", "http://100.64.0.7:7655", "http://localhost:7655"):
+    assert dash.allowed_origin(origin), origin
+for origin in (None, "http://evil.example:7655", "http://127.0.0.1:9999", "null"):
+    assert not dash.allowed_origin(origin), origin
+
+# Herdr data goes into innerHTML, so the page must escape it.
+assert "const esc" in dash.PAGE and "esc(c.title" in dash.PAGE
+
+# Every live card gets its own animal and colour; a forgotten card frees its pair.
+dash.panes.clear()
+dash.icons.clear()
+for n in range(7):
+    dash.absorb("local", {**pane("idle"), "pane_id": f"q{n}"})
+first = [dash.panes[f"local:q{n}"] for n in range(7)]
+assert len({c["icon"] for c in first}) == 7, "the first 7 cards differ in animal"
+assert len({c["icon_bg"] for c in first}) == 7, "the first 7 cards differ in colour"
+assert all(c["icon_name"] for c in first), "a card carries its hover name"
+dash.absorb("local", {**pane("working"), "pane_id": "q0"})
+assert dash.panes["local:q0"]["icon"] == first[0]["icon"], "a card keeps its icon while it lives"
+dash.mark_gone("local:q3")
+dash.forget("local:q3")
+dash.absorb("local", {**pane("idle"), "pane_id": "q9"})
+assert dash.panes["local:q9"]["icon_name"] == first[3]["icon_name"], "the next card reuses the freed pair"
+
 print("ok")

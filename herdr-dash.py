@@ -25,6 +25,10 @@ REGISTRY = os.path.expanduser("~/.config/herdr-dash/remotes")
 # Extra addresses besides localhost, e.g. a NetBird IP to reach the board from a phone.
 BIND = ["127.0.0.1"] + os.environ.get("HERDR_DASH_BIND", "").split()
 PORT = 7655
+# POST is only allowed from the board's own page. Origin is checked, not Host: a DNS-rebinding
+# page sends a matching Host but keeps its own domain in Origin.
+ORIGINS = {"http://%s:%d" % (h, PORT) for h in BIND + ["localhost"]}
+KEYS = {"1", "2", "3", "esc", "enter"}  # what the panel may send to a blocked agent
 GONE_TTL = 30  # seconds a dimmed card lingers after its session exits
 RECONCILE_EVERY = 5
 PUSH_EVERY = 2  # seconds; the floor on how often a card may move
@@ -95,10 +99,24 @@ UUID_PREFIX = re.compile(r"^\w+/[0-9a-f-]{36}:\s*")
 ACTIVITY = re.compile(r"^(thinking|idle|working\b|running\b|compacting\b|.*\(after .*\))", re.I)
 summaries = {}
 
+# 12 and 7 share no factor, so index i gives a different pair for 84 indexes in a row.
+ANIMALS = [("🦊", "fox"), ("🦉", "owl"), ("🐸", "frog"), ("🐳", "whale"),
+           ("🐝", "bee"), ("🐢", "turtle"), ("🐙", "octopus"), ("🐧", "penguin"),
+           ("🦔", "hedgehog"), ("🦀", "crab"), ("🐌", "snail"), ("🦜", "parrot")]
+# Muted, so a background does not read as a status colour (red, orange, green borders).
+COLOURS = [("blue", "#1f4e79"), ("purple", "#4b2a6b"), ("teal", "#145a5a"), ("pink", "#7a2e57"),
+           ("yellow", "#6b5a14"), ("brown", "#5a3b1f"), ("grey", "#3f444c")]
+icons = {}  # card key -> index into ANIMALS and COLOURS; the lowest free one, freed by forget()
+
 
 def card(host, pane):
     pid = pane["pane_id"]
     key = f"{host}:{pid}"
+    with lock:  # reader threads of different hosts can meet a new card at the same time
+        if key not in icons:
+            icons[key] = min(set(range(len(icons) + 1)) - set(icons.values()))
+        i = icons[key]
+    animal, colour = ANIMALS[i % len(ANIMALS)], COLOURS[i % len(COLOURS)]
     title = UUID_PREFIX.sub("", pane.get("terminal_title_stripped") or pane.get("terminal_title") or "")
     if title and not ACTIVITY.match(title):
         summaries[key] = title
@@ -111,6 +129,9 @@ def card(host, pane):
         "repo": os.path.basename(pane.get("cwd") or "") or "~",
         "fresh": False,
         "gone": False,
+        "icon": animal[0],
+        "icon_name": f"{colour[0]} {animal[1]}",
+        "icon_bg": colour[1],
     }
 
 
@@ -120,6 +141,7 @@ def forget(key):
         # Else a recycled pane wears the dead agent's name until the new one
         # writes a summary of its own.
         summaries.pop(key, None)
+        icons.pop(key, None)
         broadcast()
 
 
@@ -303,7 +325,10 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .tab .n{color:#f85149;margin-left:6px}
  .strip:not(.on){display:none}
  .card{background:#1e2128;border-left:3px solid #3a3f48;border-radius:4px;padding:10px;
-       margin-bottom:8px;cursor:pointer}
+       margin-bottom:8px;cursor:pointer;display:flex;gap:8px;align-items:flex-start}
+ .card>div{min-width:0}
+ .ic{flex:none;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;
+     justify-content:center;font-size:15px}
  .card:hover{background:#262a32}
  .card .t{font-weight:500;margin-bottom:3px}
  .card .r{font-size:12px;color:#8b939c;font-family:ui-monospace,monospace}
@@ -312,12 +337,34 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .done .card{border-left-color:#3fb950}
  .fresh{outline:1px solid #bc8cff}
  .gone{opacity:.4}
+ #panel{position:fixed;left:0;right:0;bottom:0;background:#1e2128;border-top:1px solid #3a3f48;padding:10px 16px}
+ body.steering #board{padding-bottom:calc(30vh + 160px)}
+ #panel .ph{display:flex;gap:8px;align-items:center}
+ #panel .ph span:last-of-type{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #recap{margin:8px 0;max-height:30vh;overflow:auto;white-space:pre-wrap;word-break:break-word;
+        font:12px ui-monospace,monospace;color:#b4bcc6}
+ #panel .in{display:flex;gap:6px;flex-wrap:wrap}
+ #ptext{flex:1;min-width:140px;font-size:16px;background:#14161a;color:inherit;border:1px solid #3a3f48;
+        border-radius:4px;padding:6px 8px}
+ #panel button{font:inherit;background:#262a32;color:inherit;border:1px solid #3a3f48;border-radius:4px;
+               padding:6px 12px;cursor:pointer}
+ #perr{color:#f85149;font-size:12px;min-height:0}
 </style>
 <div id=board></div>
+<div id=panel hidden>
+ <div class=ph><span class=ic id=pic></span><b id=pname></b><span id=ptitle></span><button id=pclose>&times;</button></div>
+ <pre id=recap></pre>
+ <div class=in><input id=ptext placeholder="Send a prompt" autocomplete=off>
+  <span id=pkeys><button data-k=1>1</button> <button data-k=2>2</button> <button data-k=3>3</button>
+  <button data-k=esc>esc</button> <button data-k=enter>enter</button></span></div>
+ <div id=perr></div>
+</div>
 <script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const COLS = {blocked:'blocked', working:'working', idle:'idle', unknown:'idle', done:'done'};
 const TITLES = {blocked:'Waiting for you', working:'In progress', idle:'Idle', done:'Done'};
 let active = localStorage.getItem('host');
+let latest = {}, target = null, timer = null;  // latest cards by key; the open panel's card key
 // A stream that silently stops (sleep, network change) leaves a stale board; the server pings every 5s.
 let heard = Date.now();
 const es = new EventSource('/events');
@@ -328,6 +375,7 @@ setInterval(() => {
 es.onmessage = e => {
   heard = Date.now();
   const cards = JSON.parse(e.data), hosts = {};
+  latest = Object.fromEntries(cards.map(c => [c.key, c]));
   for (const c of cards) (hosts[c.host] ||= []).push(c);
   const names = Object.keys(hosts);  // server sorts local first
   const waiting = cards.filter(c => (c.status == 'blocked' || c.status == 'done') && !c.gone).length;
@@ -336,18 +384,75 @@ es.onmessage = e => {
   let html = '';
   if (names.length > 1) html += '<div class=tabs>' + names.map(h => {
     const n = hosts[h].filter(c => c.status == 'blocked' && !c.gone).length;
-    return `<div class="tab${h == active ? ' on' : ''}" data-host="${h}">${h}${n ? `<span class=n>${n}</span>` : ''}</div>`;
+    return `<div class="tab${h == active ? ' on' : ''}" data-host="${esc(h)}">${esc(h)}${n ? `<span class=n>${n}</span>` : ''}</div>`;
   }).join('') + '</div>';
   for (const host of names) {
     const out = {blocked:'', working:'', idle:'', done:''};
     for (const c of hosts[host]) out[COLS[c.status] || 'idle'] +=
-      `<div class="card${c.fresh ? ' fresh' : ''}${c.gone ? ' gone' : ''}" data-id="${c.key}">` +
-      `<div class=t>${c.title || c.pane_id}</div><div class=r>${c.repo}</div></div>`;
-    html += `<div class="strip${host == active ? ' on' : ''}" data-host="${host}"><div class=cols>` +
+      `<div class="card${c.fresh ? ' fresh' : ''}${c.gone ? ' gone' : ''}" data-id="${esc(c.key)}">` +
+      `<span class=ic style="background:${esc(c.icon_bg)}" title="${esc(c.icon_name)}">${esc(c.icon)}</span>` +
+      `<div><div class=t>${esc(c.title || c.pane_id)}</div><div class=r>${esc(c.repo)}</div></div></div>`;
+    html += `<div class="strip${host == active ? ' on' : ''}" data-host="${esc(host)}"><div class=cols>` +
       Object.keys(out).map(k => `<div class="col ${k}"><h2>${TITLES[k]}</h2>${out[k]}</div>`).join('') +
       '</div></div>';
   }
   document.getElementById('board').innerHTML = html;
+  if (target) head();
+};
+// The panel lives outside #board because every push replaces #board's innerHTML, which would wipe typed text.
+const $ = id => document.getElementById(id);
+const head = () => {
+  const c = latest[target];
+  if (!c) return;  // the card is gone or hidden; keep its last header
+  $('pic').textContent = c.icon;
+  $('pic').style.background = c.icon_bg;
+  $('pic').title = c.icon_name;
+  $('pname').textContent = c.icon_name;
+  $('ptitle').textContent = c.title || c.pane_id;
+};
+async function act(route, body) {
+  const k = target;
+  try {
+    const r = await fetch('/' + route + '/' + k, {method: 'POST', body});
+    if (k != target) return;
+    $('perr').textContent = r.ok ? '' : `${route} failed (${r.status})`;
+    return r;
+  } catch (x) {
+    if (k == target) $('perr').textContent = route + ' failed: no answer';
+  }
+}
+async function refresh() {
+  const k = target, r = await act('read', '');
+  if (!r?.ok) return;
+  const t = await r.text();
+  if (k != target) return;
+  $('recap').textContent = t;  // text, never HTML: a terminal can print anything
+  $('recap').scrollTop = $('recap').scrollHeight;
+}
+function openPanel(key) {
+  if (key != target) {  // never carry typed text over to another agent
+    $('recap').textContent = $('perr').textContent = $('ptext').value = '';
+    target = key;
+  }
+  head();
+  $('panel').hidden = false;
+  document.body.classList.add('steering');
+  refresh();
+  clearInterval(timer);
+  timer = setInterval(refresh, 5000);
+}
+$('pclose').onclick = () => {
+  target = null;
+  clearInterval(timer);
+  $('panel').hidden = true;
+  document.body.classList.remove('steering');
+};
+$('pkeys').onclick = e => e.target.dataset.k && act('keys', e.target.dataset.k);
+$('ptext').onkeydown = async e => {
+  const v = $('ptext').value;
+  if (e.key != 'Enter' || e.isComposing || !v.trim()) return;
+  const r = await act('prompt', v);
+  if (r?.status == 204 && $('ptext').value == v) $('ptext').value = '';
 };
 document.addEventListener('click', e => {
   const tab = e.target.closest('.tab');
@@ -358,9 +463,16 @@ document.addEventListener('click', e => {
     return;
   }
   const el = e.target.closest('.card');
-  if (el) fetch('/focus/' + el.dataset.id, {method: 'POST'});
+  if (el) {
+    fetch('/focus/' + el.dataset.id, {method: 'POST'});
+    openPanel(el.dataset.id);
+  }
 });
 </script>"""
+
+
+def allowed_origin(origin):
+    return origin in ORIGINS
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -403,15 +515,44 @@ class Handler(BaseHTTPRequestHandler):
                 subscribers.remove(q)
 
     def do_POST(self):
-        if not self.path.startswith("/focus/"):
+        if not allowed_origin(self.headers.get("Origin")):
+            self.send_error(403)
+            return
+        route, _, key = self.path[1:].partition("/")
+        host, _, pane_id = key.partition(":")
+        if route not in ("focus", "prompt", "keys", "read") or not (host and pane_id):
             self.send_error(404)
             return
-        key = self.path[len("/focus/"):]
-        host, pane_id = key.split(":", 1)
-        call(host, "agent.focus", {"target": pane_id})
-        mark_seen(key)
-        self.send_response(204)
+        try:
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+        except ValueError:  # a bad length or non-UTF-8 text
+            self.send_error(400)
+            return
+        keys = body.split()
+        if (route == "prompt" and not body.strip()) or (route == "keys" and not (keys and set(keys) <= KEYS)):
+            self.send_error(400)
+            return
+        method, params = {
+            "focus": ("agent.focus", {"target": pane_id}),
+            "prompt": ("agent.prompt", {"target": pane_id, "text": body.strip()}),
+            "keys": ("agent.send_keys", {"target": pane_id, "keys": keys}),
+            "read": ("agent.read", {"target": pane_id, "source": "recent", "lines": 20}),
+        }[route]
+        try:
+            # An error response has no "result", so it lands in the KeyError branch too.
+            result = call(host, method, params)["result"]
+            text = result["read"]["text"].encode() if route == "read" else b""
+        except (OSError, ValueError, KeyError):
+            self.send_error(502)
+            return
+        if route == "focus":
+            mark_seen(key)
+        self.send_response(200 if route == "read" else 204)
+        if route == "read":
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(text)))
         self.end_headers()
+        self.wfile.write(text)
 
 
 if __name__ == "__main__":

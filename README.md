@@ -32,17 +32,38 @@ HERDR_DASH_BIND=100.64.0.7 ./herdr-dash.py
 ```
 
 Then open `http://100.64.0.7:7655` on the phone. The board has no login, so
-anyone on that network can see your sessions and focus panes. Start the board
-after the network is up; it skips an address that isn't there yet.
+anyone on that network can see your sessions, read their recent output, focus
+panes and send them prompts and key presses. Start the board after the network
+is up; it skips an address that isn't there yet.
+
+The board accepts actions only from its own page, opened at `127.0.0.1`,
+`localhost` or an address in `HERDR_DASH_BIND`. A page opened at any other
+name can read the board but not steer it.
 
 ## How it works
 
 herdr already classifies each pane as idle, working, blocked or done. The
 board subscribes to herdr's pane events.
 
+Each card has an animal icon on a coloured background. Hover over it for its
+name, such as "blue fox". Cards on the board get different icons, and a card
+keeps its icon until it disappears. The icons reset when you restart the
+board.
+
 A card that changed while you weren't looking at its pane gets a purple
 outline until you focus it. A card whose session has exited dims for half a
 minute, then disappears.
+
+## Steer a session
+
+Click a card to open a panel at the bottom of the board. The panel shows the
+session's title and the last 20 lines of its terminal, refreshed every five
+seconds. Type a prompt and press Enter to send it to that agent. To answer a
+menu, press `1`, `2`, `3`, `esc` or `enter`. Click × to close the panel.
+
+The recap shows whatever the terminal printed, including secrets.
+
+## Hide a session
 
 To keep a session off the board, start its name with a dot, for example
 `/rename .diff` in Claude. The card appears only while that session waits for
