@@ -68,10 +68,11 @@ so a busy card would lose its only name. `summaries` keeps the last non-activity
 title per pane; `ACTIVITY` is a vocabulary regex and will need extending as
 Claude's status words change.
 
-**Hidden sessions:** `board()` drops cards whose title or worktree folder name (`repo`) starts with `.` unless they
-are blocked. It filters on the server, so the page title, tab counts and dock
-badge all ignore hidden cards. The card stays in `panes`, which keeps its `fresh`
-flag and title history.
+**Hidden sessions:** `board()` drops cards whose title starts with `.` unless
+they are blocked. It filters on the server, so the page title, tab counts and
+dock badge all ignore hidden cards. The card stays in `panes`, which keeps its
+`fresh` flag and title history. A worktree folder that starts with `.` does not
+hide a card, because herdr creates every worktree that way.
 
 ## Remotes
 
