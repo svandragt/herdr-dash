@@ -85,4 +85,30 @@ dash.forget("local:q3")
 dash.absorb("local", {**pane("idle"), "pane_id": "q9"})
 assert dash.panes["local:q9"]["icon_name"] == first[3]["icon_name"], "the next card reuses the freed pair"
 
+# The recap drops Claude's input box and status footer, which sit below the last two rule lines.
+RULE = "─" * 32
+tail = f"""\
+✻ Crunched for 5m 51s · done 14:15
+
+{RULE}
+❯
+{RULE}
+  7ba1a27e  ⎇ steer-sessions  Opus 5.5 (medium)  ctx:133k/1000k (13%)
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+"""
+body = "Done: the parser is fixed.\n\n  - it keeps the tail\n"
+cleaned = dash.clean_recap(body + tail)
+assert cleaned.endswith("✻ Crunched for 5m 51s · done 14:15"), cleaned
+assert "❯" not in cleaned and "ctx:" not in cleaned and "auto mode" not in cleaned
+assert cleaned.startswith("Done: the parser is fixed."), "text above the box stays"
+# Claude puts the session name in the top rule, so that rule is not made of box characters only.
+named = f"{body}\n{RULE} session name ─\n❯\n{RULE}\n  7ba1a27e  Opus 5.5\n"
+assert dash.clean_recap(named) == dash.clean_recap(body), "a named top rule starts the cut too"
+# With one rule line there is no box to cut: the rule goes, the rest stays.
+assert dash.clean_recap(f"one\n{RULE}\ntwo\n") == "one\ntwo"
+# Another agent's text is not cut when it has no rule lines.
+assert dash.clean_recap("\n\nfirst\n\n\n   \nsecond\n\n") == "first\n\nsecond"
+assert dash.clean_recap("") == ""
+assert dash.clean_recap(RULE) == ""
+
 print("ok")

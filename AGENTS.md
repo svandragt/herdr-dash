@@ -96,7 +96,7 @@ The page can send input to an agent. Every POST route splits the key
 | `/focus/<key>` | none | `agent.focus`, then `mark_seen()` |
 | `/prompt/<key>` | the text | `agent.prompt` with `target` and `text` |
 | `/keys/<key>` | space-separated key names from `KEYS` (`1 2 3 esc enter`) | `agent.send_keys` with `target` and `keys` |
-| `/read/<key>` | none | `agent.read` with `source: recent` and `lines: 20`; answers the text as `text/plain` |
+| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`; answers `clean_recap()` of the text as `text/plain` |
 
 An empty prompt or a key outside `KEYS` is a 400. A herdr call that raises or
 answers with an error is a 502. `/read` is a POST, not a GET, so the `Origin`
@@ -104,6 +104,19 @@ check covers it: a GET would let a DNS-rebinding page read terminal output. The 
 names come from `herdr api schema --json` (`AgentPromptParams`,
 `AgentSendKeysParams`, `AgentReadParams`); the read text is
 `result.read.text` in the response.
+
+**`clean_recap(text)`** turns the pane text into a readable recap. A rule line
+is a line that is only box-drawing characters (U+2500 to U+257F), or a run of
+`─` with a label after it: Claude puts the session name in the input box's top
+rule, so that rule has letters. If the text has at least two rule lines, the
+function cuts everything from the second-to-last one, which removes Claude's
+input box and the status footer below it. It then drops the remaining rule
+lines, collapses runs of blank lines to one and trims blank lines at both ends.
+Only Claude draws that box. Another agent's pane has no rule lines, so it keeps
+its footer text. A table border above the box is also a rule line, but it is
+only dropped: the box's own two rules are the last two, so they start the cut.
+`recent_unwrapped` joins the terminal's soft wraps, so the page wraps lines to
+its own width.
 
 **Origin check.** `do_POST` first compares the `Origin` header with `ORIGINS`,
 `http://<address>:7655` for each `BIND` address plus `localhost`, and answers
@@ -156,24 +169,42 @@ many of its cards are blocked so a remote that needs you still surfaces.
 Card titles, folder names, hosts and keys come from herdr and the page puts them
 in `innerHTML` through `esc()`. A script injected through a pane title would
 pass the `Origin` check and could steer every session, so every server value
-goes through `esc()`, including the icon fields. The compose panel and its recap
+goes through `esc()`, including the icon fields. The panel and its recap
 use `textContent`.
-Clicking a card POSTs `/focus/<key>`, which calls `agent.focus` and clears the card's `fresh` flag, and opens the compose panel for that card. The violet outline means *this card
+Clicking a card POSTs `/focus/<key>`, which calls `agent.focus` and clears the card's `fresh` flag, and opens the full view for that card. The violet outline means *this card
 changed status and you haven't looked at the pane since* — it clears either
 on that click or when herdr reports the pane focused, so focusing a pane
 directly in your terminal counts as seeing it.
 
-**The compose panel** (`#panel`) is a sibling of `#board`, not part of it. The SSE
-handler replaces `#board`'s `innerHTML` on every push, so anything inside would
-lose the text you are typing. The panel shows the target's icon, name and title
-(updated on each push from the new card data, without touching the input or the
-recap), a `<pre>` recap fetched from `/read` on open and every 5s while open,
-a text input (Enter sends to `/prompt` and clears on a 204), buttons that POST
-`/keys`, and a close button that stops the timer. Opening it for a different
-card clears the input and recap, so text typed for one agent is never sent to
-another. While it is open, `#board` gets bottom padding so the panel does not
-cover the last cards. Clicks in the panel do not reach the card handler,
-because that handler looks for a `.card` ancestor and the panel has none.
+**The full view** (`#panel`) is a sibling of `#board`, not part of it, and covers
+it with `position:fixed; inset:0`. The SSE handler replaces `#board`'s
+`innerHTML` on every push, so anything inside would lose the text you are
+typing. The view is a flex column: a header (back button, the target's icon,
+name and title, updated on each push from the new card data without touching
+the input or the recap), the recap filling the middle, and a footer with a text
+input (Enter sends to `/prompt` and clears on a 204) and buttons that POST
+`/keys`. The recap is a `<div>` in the page font with `white-space: pre-wrap`,
+fetched from `/read` on open and every 5s while open. It scrolls to the bottom
+on a refresh only if it was already at the bottom, so you can read further up.
+`#panel[hidden]` needs its own `display:none` rule, because `display:flex` on
+`#panel` would otherwise override the `hidden` attribute. While the view is
+open `body` gets `overflow:hidden` so the board does not scroll behind it.
+
+**History.** Opening a view calls `history.pushState({card: key}, '')`, so the
+browser back button and the phone back gesture close it. `popstate` does the
+closing. The back arrow and the keyboard Esc key call `history.back()` while
+`pushed` is set and clear `pushed` first, so a second press before `popstate`
+fires cannot pop an entry that belongs to the previous page. Esc closes the view
+even when the text input has focus, unless `e.isComposing` is set, because
+an IME uses Esc to cancel a composition. The on-screen `esc` button still
+sends Esc to the agent. Pressing the browser's forward button after going back
+does not reopen the view.
+
+Opening a card other than the last one opened clears the input and recap, so
+text typed for one agent is never sent to another. Reopening the same card keeps
+the text: `last` remembers the card across a close, while `target` is null when
+no view is open and makes in-flight `/read` and `/keys` responses for a closed
+view get dropped.
 
 ## Desktop launcher
 

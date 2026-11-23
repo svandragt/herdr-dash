@@ -337,12 +337,14 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
  .done .card{border-left-color:#3fb950}
  .fresh{outline:1px solid #bc8cff}
  .gone{opacity:.4}
- #panel{position:fixed;left:0;right:0;bottom:0;background:#1e2128;border-top:1px solid #3a3f48;padding:10px 16px}
- body.steering #board{padding-bottom:calc(30vh + 160px)}
- #panel .ph{display:flex;gap:8px;align-items:center}
+ #panel{position:fixed;inset:0;display:flex;flex-direction:column;background:#14161a}
+ #panel[hidden]{display:none}
+ body.steering{overflow:hidden}
+ #panel .ph{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#1e2128;border-bottom:1px solid #2a2e36}
  #panel .ph span:last-of-type{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- #recap{margin:8px 0;max-height:30vh;overflow:auto;white-space:pre-wrap;word-break:break-word;
-        font:12px ui-monospace,monospace;color:#b4bcc6}
+ #recap{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 16px;white-space:pre-wrap;
+        word-break:break-word;line-height:1.5;color:#b4bcc6}
+ #panel .pf{padding:10px 16px;background:#1e2128;border-top:1px solid #2a2e36}
  #panel .in{display:flex;gap:6px;flex-wrap:wrap}
  #ptext{flex:1;min-width:140px;font-size:16px;background:#14161a;color:inherit;border:1px solid #3a3f48;
         border-radius:4px;padding:6px 8px}
@@ -352,19 +354,21 @@ PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 </style>
 <div id=board></div>
 <div id=panel hidden>
- <div class=ph><span class=ic id=pic></span><b id=pname></b><span id=ptitle></span><button id=pclose>&times;</button></div>
- <pre id=recap></pre>
- <div class=in><input id=ptext placeholder="Send a prompt" autocomplete=off>
+ <div class=ph><button id=pclose aria-label=Back title=Back>&larr;</button><span class=ic id=pic></span><b id=pname></b><span id=ptitle></span></div>
+ <div id=recap></div>
+ <div class=pf><div class=in><input id=ptext placeholder="Send a prompt" autocomplete=off>
   <span id=pkeys><button data-k=1>1</button> <button data-k=2>2</button> <button data-k=3>3</button>
   <button data-k=esc>esc</button> <button data-k=enter>enter</button></span></div>
- <div id=perr></div>
+  <div id=perr></div></div>
 </div>
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const COLS = {blocked:'blocked', working:'working', idle:'idle', unknown:'idle', done:'done'};
 const TITLES = {blocked:'Waiting for you', working:'In progress', idle:'Idle', done:'Done'};
 let active = localStorage.getItem('host');
-let latest = {}, target = null, timer = null;  // latest cards by key; the open panel's card key
+// latest cards by key; target is the open view's card, last the card opened most recently;
+// pushed is set while the open view owns a history entry
+let latest = {}, target = null, last = null, pushed = false, timer = null;
 // A stream that silently stops (sleep, network change) leaves a stale board; the server pings every 5s.
 let heard = Date.now();
 const es = new EventSource('/events');
@@ -425,28 +429,39 @@ async function refresh() {
   const k = target, r = await act('read', '');
   if (!r?.ok) return;
   const t = await r.text();
-  if (k != target) return;
-  $('recap').textContent = t;  // text, never HTML: a terminal can print anything
-  $('recap').scrollTop = $('recap').scrollHeight;
+  if (k != target || t == $('recap').textContent) return;  // unchanged: keep the reader's selection
+  const box = $('recap'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
+  box.textContent = t;  // text, never HTML: a terminal can print anything
+  if (atBottom) box.scrollTop = box.scrollHeight;  // reading further up must not be yanked down
 }
 function openPanel(key) {
-  if (key != target) {  // never carry typed text over to another agent
+  if (key != last) {  // never carry typed text over to another agent
     $('recap').textContent = $('perr').textContent = $('ptext').value = '';
-    target = key;
+    last = key;
   }
+  history.pushState({card: key}, '');  // the back button or gesture closes the view
+  pushed = true;
+  target = key;
   head();
   $('panel').hidden = false;
   document.body.classList.add('steering');
+  $('recap').scrollTop = $('recap').scrollHeight;  // a hidden element forgets its scroll position
   refresh();
   clearInterval(timer);
   timer = setInterval(refresh, 5000);
 }
-$('pclose').onclick = () => {
+function closePanel() {
   target = null;
+  pushed = false;
   clearInterval(timer);
   $('panel').hidden = true;
   document.body.classList.remove('steering');
-};
+}
+// popstate does the closing, so the history entry openPanel pushed is always popped.
+const back = () => pushed ? (pushed = false, history.back()) : closePanel();
+$('pclose').onclick = back;
+addEventListener('popstate', closePanel);
+document.addEventListener('keydown', e => e.key == 'Escape' && target && !e.isComposing && back());
 $('pkeys').onclick = e => e.target.dataset.k && act('keys', e.target.dataset.k);
 $('ptext').onkeydown = async e => {
   const v = $('ptext').value;
@@ -469,6 +484,27 @@ document.addEventListener('click', e => {
   }
 });
 </script>"""
+
+
+# A rule line is only box-drawing characters; Claude can also put the session name in the input box's top rule.
+RULE = re.compile(r"[\u2500-\u257f]+|\u2500+ .+ \u2500+")
+
+
+def clean_recap(text):
+    """Plain recap of a pane: no rule lines, and no Claude input box or status footer below them."""
+    lines = text.split("\n")
+    rules = [i for i, l in enumerate(lines) if RULE.fullmatch(l.strip())]
+    if len(rules) >= 2:  # the input box sits between the last two rules
+        lines = lines[:rules[-2]]
+    out = []
+    for l in lines:
+        if RULE.fullmatch(l.strip()):
+            continue
+        if l.strip():
+            out.append(l)
+        elif out and out[-1]:
+            out.append("")
+    return "\n".join(out).strip("\n")
 
 
 def allowed_origin(origin):
@@ -536,12 +572,12 @@ class Handler(BaseHTTPRequestHandler):
             "focus": ("agent.focus", {"target": pane_id}),
             "prompt": ("agent.prompt", {"target": pane_id, "text": body.strip()}),
             "keys": ("agent.send_keys", {"target": pane_id, "keys": keys}),
-            "read": ("agent.read", {"target": pane_id, "source": "recent", "lines": 20}),
+            "read": ("agent.read", {"target": pane_id, "source": "recent_unwrapped", "lines": 60}),
         }[route]
         try:
             # An error response has no "result", so it lands in the KeyError branch too.
             result = call(host, method, params)["result"]
-            text = result["read"]["text"].encode() if route == "read" else b""
+            text = clean_recap(result["read"]["text"]).encode() if route == "read" else b""
         except (OSError, ValueError, KeyError):
             self.send_error(502)
             return

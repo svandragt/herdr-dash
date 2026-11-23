@@ -56,10 +56,16 @@ minute, then disappears.
 
 ## Steer a session
 
-Click a card to open a panel at the bottom of the board. The panel shows the
-session's title and the last 20 lines of its terminal, refreshed every five
-seconds. Type a prompt and press Enter to send it to that agent. To answer a
-menu, press `1`, `2`, `3`, `esc` or `enter`. Click × to close the panel.
+Click a card to open it full screen. The view shows the session's icon, name
+and title, and a recap of its recent output as plain text, refreshed every
+five seconds. For Claude sessions, the recap leaves out the input box and
+status line at the bottom of the terminal. Type a prompt and press Enter to
+send it to that agent. To answer a menu, press `1`, `2`, `3`, `esc` or
+`enter`. The `esc` button sends Esc to the agent.
+
+To return to the board, press the Esc key on your keyboard, click the back
+arrow, or use the browser's back button or gesture. If you reopen the same
+card, the text you typed is still there.
 
 The recap shows whatever the terminal printed, including secrets.
 
