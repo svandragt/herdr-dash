@@ -217,8 +217,9 @@ directly in your terminal counts as seeing it.
 it with `position:fixed; inset:0`. The SSE handler replaces `#board`'s
 `innerHTML` on every push, so anything inside would lose the text you are
 typing. The view is a flex column: a header (back button, the target's icon,
-name and title, updated on each push from the new card data without touching
-the input or the recap), the recap filling the middle, and a footer with a text
+its title in bold over its folder and icon name, and a status pill in the
+column's colour, all updated on each push from the new card data without
+touching the input or the recap), the recap filling the middle, and a footer with a text
 input and buttons that POST `/keys`. Enter sends the text to `/prompt`. It clears
 the input before the request, so a second Enter has nothing to send, and restores
 the text if the request fails (not a 204, or no answer) while the input is still
@@ -255,7 +256,9 @@ prose gives `[]`. The page builds one button per option (digits up to 9)
 between `esc` and `enter`, and `optionLines()` makes the menu's own option lines
 tappable, starting from the last `1.` line. A click that ends a text selection
 sends nothing. A key or prompt that herdr accepts gets the `sent` class for
-700 ms.
+700 ms. `menuStart()` finds where the menu block begins: the question's `│` lines
+just above the options, or the last `1.` line. From there to the end of the
+reply the lines sit on a lighter `.menu` surface.
 
 **History.** Opening a view calls `history.pushState({card: key}, '')`, so the
 browser back button and the phone back gesture close it. `popstate` does the

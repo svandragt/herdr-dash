@@ -345,7 +345,15 @@ body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";
  #panel[hidden]{display:none}
  body.steering{overflow:hidden}
  #panel .ph{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#1e2128;border-bottom:1px solid #2a2e36}
- #panel .ph span:last-of-type{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #panel .pid{flex:1;min-width:0;display:flex;flex-direction:column}
+ #panel .pid>*{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #prepo{font-size:12px;color:#8b939c}
+ #pstat{flex:none;font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;
+        border:1px solid currentColor;border-radius:10px;color:#8b939c}
+ #pstat.blocked{color:#f85149}
+ #pstat.working{color:#f0883e}
+ #pstat.done{color:#3fb950}
+ #recap .menu{margin:8px 0;padding:8px 12px;background:#1b1e24;border-radius:6px}
  #recap{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 16px;color:#b4bcc6}
  #recap .lbl{margin:14px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c}
  #recap summary{margin-top:14px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;cursor:pointer}
@@ -372,7 +380,7 @@ body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";
 </style>
 <div id=board></div>
 <div id=panel hidden>
- <div class=ph><button id=pclose aria-label=Back title=Back>&larr;</button><span class=ic id=pic></span><b id=pname></b><span id=ptitle></span></div>
+ <div class=ph><button id=pclose aria-label=Back title=Back>&larr;</button><span class=ic id=pic></span><span class=pid><b id=ptitle></b><span id=prepo></span></span><span id=pstat></span></div>
  <div id=recap>
   <div id=ask hidden><div class=lbl>You asked</div><div id=askb></div></div>
   <div id=rep hidden><div class=lbl>Latest reply</div><div id=repb></div></div>
@@ -432,8 +440,11 @@ const head = () => {
   $('pic').textContent = c.icon;
   $('pic').style.background = c.icon_bg;
   $('pic').title = c.icon_name;
-  $('pname').textContent = c.icon_name;
   $('ptitle').textContent = c.title || c.pane_id;
+  $('prepo').textContent = `${c.repo} · ${c.icon_name}`;
+  const col = COLS[c.status] || 'idle';
+  $('pstat').textContent = col == 'blocked' ? 'waiting' : col;
+  $('pstat').className = col;
 };
 // The error line is tagged with the route that wrote it: the 5s read must not wipe a prompt's error.
 const note = (route, msg) => { $('perr').textContent = msg; $('perr').dataset.route = route; };
@@ -470,15 +481,25 @@ function optionLines(lines, options) {
     return start >= 0 && i >= start && options.includes(n) ? n : 0;
   });
 }
+// The menu block: the question's `│` lines just above the options, or the options from the last `1.` line.
+function menuStart(lines) {
+  let s = lines.findLastIndex(l => OPT.exec(l)?.[1] == '1'), q = s - 1;
+  if (s < 0) return -1;
+  while (q >= 0 && !lines[q].trim()) q--;
+  while (q >= 0 && /^\\s*│/.test(lines[q])) s = q--;
+  return s;
+}
 function fill(box, text, options = []) {
   const groups = [], lines = text.split('\\n'), table = tableLines(lines), opt = optionLines(lines, options);
+  const ms = options.length ? menuStart(lines) : -1;
   lines.forEach((line, i) => {
-    const g = groups[groups.length - 1];
-    if (g?.table === table[i]) g.lines.push([line, opt[i]]); else groups.push({table: table[i], lines: [[line, opt[i]]]});
+    const g = groups[groups.length - 1], menu = ms >= 0 && i >= ms;
+    if (g?.table === table[i] && g.menu === menu) g.lines.push([line, opt[i]]);
+    else groups.push({table: table[i], menu, lines: [[line, opt[i]]]});
   });
   box.replaceChildren(...groups.map(g => {
     const el = document.createElement(g.table ? 'pre' : 'div');
-    el.className = g.table ? 'tbl' : 'prose';
+    el.className = g.table ? 'tbl' : g.menu ? 'prose menu' : 'prose';
     if (g.table) el.textContent = g.lines.map(l => l[0]).join('\\n');
     // One block per line, its indent as padding, so a wrapped indented line wraps under its own start.
     else el.append(...g.lines.map(([line, k]) => {

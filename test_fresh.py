@@ -311,6 +311,12 @@ if shutil.which("node"):
     got = subprocess.run(["node", "-e", js + f"console.log(JSON.stringify(optionLines({json.dumps(lines)}, [1, 2])))"],
                          capture_output=True, text=True, check=True).stdout
     assert json.loads(got) == [0, 0, 1, 0, 2, 0], got
+    # The menu block starts at the question's `│` lines just above the options, or at the options.
+    js = re.search(r"const OPT.*?\nfunction menuStart.*?\n}\n", dash.PAGE, re.S).group(0)
+    cases = [["Intro", "│ Q line1", "│ Q line2", "", "❯ 1. A", "2. B"], ["Intro", "", "❯ 1. A"], ["no menu"]]
+    got = subprocess.run(["node", "-e", js + f"console.log(JSON.stringify({json.dumps(cases)}.map(l => menuStart(l))))"],
+                         capture_output=True, text=True, check=True).stdout
+    assert json.loads(got) == [1, 2, -1], got
 else:
     print("skip: node not found, the page's table check did not run")
 
