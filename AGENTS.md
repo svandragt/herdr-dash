@@ -235,8 +235,11 @@ spaces) and has a second `│` or `┃`; a line made only of box-drawing charact
 is a table line when a row sits directly above or below it. So a wrapped prose
 line that starts with `┃).` and Claude's one-bar menu question stay prose.
 Consecutive table lines become one `<pre class=tbl>` (`white-space: pre`,
-scrolls sideways). The other lines become prose at 15px, line height 1.6 and at
-most 70ch wide, one block per line with its leading spaces as `ch` padding, so
+scrolls sideways, 14px monospace). The other lines become prose at 16px, line
+height 1.6 and at most 70ch wide. Your prompt is muted (`#9aa3ad`), the latest
+reply is brightest (`#d0d6dd`), and earlier output is 14px grey, so the reply
+reads first. The "Earlier output" toggle uses the same 11px label style as
+"You asked". Each prose line is one block, with its leading spaces as `ch` padding, so
 an indented line that wraps continues under its own start. `color-scheme: dark`
 gives the sideways scrollbar a dark track. The recap scrolls to the bottom on a refresh only if it was already at
 the bottom, so you can read further up.

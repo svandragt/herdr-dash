@@ -348,9 +348,14 @@ body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";
  #panel .ph span:last-of-type{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  #recap{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 16px;color:#b4bcc6}
  #recap .lbl{margin:14px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c}
- #recap summary{margin-top:14px;font-size:12px;color:#8b939c;cursor:pointer}
- #recap .prose{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.6;max-width:70ch}
- #recap .tbl{margin:6px 0;white-space:pre;overflow-x:auto;font:13px/1.4 ui-monospace,monospace}
+ #recap summary{margin-top:14px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b939c;cursor:pointer}
+ #recap .prose{white-space:pre-wrap;word-break:break-word;font-size:16px;line-height:1.6;letter-spacing:.005em;
+   text-wrap:pretty;max-width:70ch}
+ #ask .prose{color:#9aa3ad}
+ #rep .prose{color:#d0d6dd}
+ #earl .prose{font-size:14px;color:#8b939c}
+ #recap ::selection{background:#2e4a6b;color:#fff}
+ #recap .tbl{margin:6px 0;white-space:pre;overflow-x:auto;font:14px/1.45 ui-monospace,monospace}
  #panel .pf{padding:10px 16px;background:#1e2128;border-top:1px solid #2a2e36}
  #panel .in{display:flex;gap:6px;flex-wrap:wrap}
  #ptext{flex:1;min-width:140px;font-size:16px;background:#14161a;color:inherit;border:1px solid #3a3f48;
