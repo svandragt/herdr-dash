@@ -292,4 +292,20 @@ busy = dash.split_recap("I corrected the Test plan.\n\n✻ Waiting for 1 backgro
                         "     --body-file x.md\n\n✢ Orbiting… (19s)")
 assert busy == {"asked": "", "reply": "I corrected the Test plan.", "earlier": ""}, busy
 
+# Claude's menu marks its question with one `│` in the margin: not a table, so the rule beside it goes.
+question = "← ☒ Release ☐ Goal\n────────\n│ What should I do with the\n│ worktree?\n\n❯ 1. Discard"
+assert dash.clean_recap(question) == question.replace("────────\n", ""), dash.clean_recap(question)
+
+# The page sorts lines into table and prose the same way: a table row has two bars.
+import json, re, shutil, subprocess
+if shutil.which("node"):
+    js = re.search(r"const EDGE.*?\n}\n", dash.PAGE, re.S).group(0)  # the patterns and tableLines()
+    cases = [["│ What should I do with the", "│ worktree?"], table.strip("\n").split("\n"),
+             ["┃). It groups consecutive"], ["────", "│ a question"]]
+    got = subprocess.run(["node", "-e", js + f"console.log(JSON.stringify({json.dumps(cases)}.map(tableLines)))"],
+                         capture_output=True, text=True, check=True).stdout
+    assert json.loads(got) == [[False, False], [True] * 5, [False], [False, False]], got
+else:
+    print("skip: node not found, the page's table check did not run")
+
 print("ok")

@@ -309,7 +309,8 @@ def reconcile():
 PAGE = """<!doctype html><meta charset=utf-8><title>herdr board</title>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <style>
- body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";background:#14161a;color:#e6e6e6}
+ :root{color-scheme:dark}
+body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";background:#14161a;color:#e6e6e6}
  /* rtl flips the grid so the most actionable column sits on the right, nearest
     the pane you just came from; .col puts text back the right way round. */
  .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px;direction:rtl}
@@ -443,17 +444,29 @@ async function act(route, body) {
 // A line that starts with a box character is a table line only with a second │/┃, as a border line or beside
 // another such line: wrapped prose can start with `┃).`.
 const EDGE = /^\\s*[│┌├└╭╰┃]/, BARS = /[│┃].*[│┃]/, BORDER = /^\\s*[\\u2500-\\u257f]+\\s*$/;
+// A table row starts with a bar and has a second one (Claude's menu question has one bar);
+// a line of box-drawing characters next to a row is its border.
+function tableLines(lines) {
+  const row = lines.map(l => EDGE.test(l) && BARS.test(l));
+  return lines.map((l, i) => row[i] || BORDER.test(l) && !!(row[i - 1] || row[i + 1]));
+}
 function fill(box, text) {
-  const groups = [], lines = text.split('\\n'), edge = lines.map(l => EDGE.test(l));
+  const groups = [], lines = text.split('\\n'), table = tableLines(lines);
   lines.forEach((line, i) => {
-    const table = edge[i] && (BARS.test(line) || BORDER.test(line) || !!(edge[i - 1] || edge[i + 1]));
     const g = groups[groups.length - 1];
-    if (g?.table === table) g.lines.push(line); else groups.push({table, lines: [line]});
+    if (g?.table === table[i]) g.lines.push(line); else groups.push({table: table[i], lines: [line]});
   });
   box.replaceChildren(...groups.map(g => {
     const el = document.createElement(g.table ? 'pre' : 'div');
     el.className = g.table ? 'tbl' : 'prose';
-    el.textContent = g.lines.join('\\n');
+    if (g.table) el.textContent = g.lines.join('\\n');
+    // One block per line, its indent as padding, so a wrapped indented line wraps under its own start.
+    else el.append(...g.lines.map(line => {
+      const d = document.createElement('div'), n = line.match(/^ */)[0].length;
+      d.textContent = line.slice(n) || '\\u00a0';
+      if (n) d.style.paddingLeft = n + 'ch';
+      return d;
+    }));
     return el;
   }));
 }
@@ -543,15 +556,17 @@ document.addEventListener('click', e => {
 
 # A rule line is only box-drawing characters; Claude can also put the session name in the input box's top rule.
 RULE = re.compile(r"[\u2500-\u257f]+|\u2500+ .+ \u2500+")
+TABLE_ROW = re.compile(r"\u2502.*[\u2502\u2503]")
 
 
 def beside_row(lines, i):
-    """Whether the nearest non-blank line above or below lines[i] starts with `│`: a table's border line."""
+    """Whether the nearest non-blank line above or below lines[i] is a table row: a table's border line.
+    A row starts with `│` and has a second one; Claude's menu question has only the first."""
     for step in (-1, 1):
         j = i + step
         while 0 <= j < len(lines) and not lines[j].strip():
             j += step
-        if 0 <= j < len(lines) and lines[j].lstrip().startswith("\u2502"):
+        if 0 <= j < len(lines) and TABLE_ROW.match(lines[j].lstrip()):
             return True
     return False
 
