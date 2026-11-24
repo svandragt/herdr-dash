@@ -68,8 +68,10 @@ asked" and Claude's answer as "Latest reply", without tool calls, their
 results and status lines. Older output is under "Earlier output", which you
 expand with a click. Tables keep their columns and scroll sideways. With a mouse, the cursor is
 already in the prompt box; on a touch screen, tap it. Type a prompt and press
-Enter to send it to that agent. To answer a menu, press `1`,
-`2`, `3`, `esc` or `enter`. The `esc` button sends Esc to the agent.
+Enter to send it to that agent. When the agent shows a menu, the view has a
+button for each option number, and you can also tap an option's line to choose
+it. The `esc` and `enter` buttons send those keys to the agent. A control you
+used turns green for a moment when the agent received it.
 
 To return to the board, press the Esc key on your keyboard, click the back
 arrow, or use the browser's back button or gesture. If you reopen the same

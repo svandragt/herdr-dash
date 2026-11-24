@@ -31,7 +31,7 @@ PORT = 7655
 # sends its own site as Origin.
 HOSTS = {"%s:%d" % (h, PORT) for h in BIND + ["localhost"]}
 ORIGINS = {"http://" + h for h in HOSTS}
-KEYS = {"1", "2", "3", "esc", "enter"}  # what the panel may send to a blocked agent
+KEYS = {*"123456789", "esc", "enter"}  # what the panel may send to a blocked agent: a menu digit, esc or enter
 GONE_TTL = 30  # seconds a dimmed card lingers after its session exits
 RECONCILE_EVERY = 5
 PUSH_EVERY = 2  # seconds; the floor on how often a card may move
@@ -357,11 +357,17 @@ body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";
  #recap ::selection{background:#2e4a6b;color:#fff}
  #recap .tbl{margin:6px 0;white-space:pre;overflow-x:auto;font:14px/1.45 ui-monospace,monospace}
  #panel .pf{padding:10px 16px;background:#1e2128;border-top:1px solid #2a2e36}
- #panel .in{display:flex;gap:6px;flex-wrap:wrap}
+ #panel .in{display:flex;gap:8px;flex-wrap:wrap}
+ #pkeys,#pnums{display:flex;gap:8px}
+ #pnums:empty{display:none}
  #ptext{flex:1;min-width:140px;font-size:16px;background:#14161a;color:inherit;border:1px solid #3a3f48;
         border-radius:4px;padding:6px 8px}
  #panel button{font:inherit;background:#262a32;color:inherit;border:1px solid #3a3f48;border-radius:4px;
-               padding:6px 12px;cursor:pointer}
+               padding:6px 12px;min-width:44px;min-height:44px;cursor:pointer}
+ #pkeys [data-k=esc]{margin-right:8px}
+ #recap .opt{cursor:pointer;border-radius:4px}
+ #recap .opt:hover{background:#1e2128}
+ #panel .sent,#recap .opt.sent{border-color:#3fb950;background:#1b2e22}
  #perr{color:#f85149;font-size:12px;min-height:0}
 </style>
 <div id=board></div>
@@ -373,8 +379,7 @@ body{margin:0;font:14px Inter,system-ui,sans-serif;font-feature-settings:"cv11";
   <details id=earl hidden><summary id=earls></summary><div id=earlb></div></details>
  </div>
  <div class=pf><div class=in><input id=ptext placeholder="Send a prompt" autocomplete=off>
-  <span id=pkeys><button data-k=1>1</button> <button data-k=2>2</button> <button data-k=3>3</button>
-  <button data-k=esc>esc</button> <button data-k=enter>enter</button></span></div>
+  <span id=pkeys><button data-k=esc>esc</button><span id=pnums></span><button data-k=enter>enter</button></span></div>
   <div id=perr></div></div>
 </div>
 <script>
@@ -455,33 +460,45 @@ function tableLines(lines) {
   const row = lines.map(l => EDGE.test(l) && BARS.test(l));
   return lines.map((l, i) => row[i] || BORDER.test(l) && !!(row[i - 1] || row[i + 1]));
 }
-function fill(box, text) {
-  const groups = [], lines = text.split('\\n'), table = tableLines(lines);
+// The lines of the menu at the end of the reply, by option number (0 for any other line). The menu starts
+// at the last `1.` line, so a numbered list above it is not tappable.
+const OPT = /^\\s*(?:❯\\s*)?(\\d+)\\. \\S/;
+function optionLines(lines, options) {
+  const start = lines.findLastIndex(l => OPT.exec(l)?.[1] == '1');
+  return lines.map((l, i) => {
+    const n = +(OPT.exec(l)?.[1]);
+    return start >= 0 && i >= start && options.includes(n) ? n : 0;
+  });
+}
+function fill(box, text, options = []) {
+  const groups = [], lines = text.split('\\n'), table = tableLines(lines), opt = optionLines(lines, options);
   lines.forEach((line, i) => {
     const g = groups[groups.length - 1];
-    if (g?.table === table[i]) g.lines.push(line); else groups.push({table: table[i], lines: [line]});
+    if (g?.table === table[i]) g.lines.push([line, opt[i]]); else groups.push({table: table[i], lines: [[line, opt[i]]]});
   });
   box.replaceChildren(...groups.map(g => {
     const el = document.createElement(g.table ? 'pre' : 'div');
     el.className = g.table ? 'tbl' : 'prose';
-    if (g.table) el.textContent = g.lines.join('\\n');
+    if (g.table) el.textContent = g.lines.map(l => l[0]).join('\\n');
     // One block per line, its indent as padding, so a wrapped indented line wraps under its own start.
-    else el.append(...g.lines.map(line => {
+    else el.append(...g.lines.map(([line, k]) => {
       const d = document.createElement('div'), n = line.match(/^ */)[0].length;
       d.textContent = line.slice(n) || '\\u00a0';
       if (n) d.style.paddingLeft = n + 'ch';
+      if (k) Object.assign(d, {className: 'opt', role: 'button', tabIndex: 0, title: `Send ${k}`}).dataset.k = k;
       return d;
     }));
     return el;
   }));
 }
-function show(id, text) {  // an empty part is hidden
+function show(id, text, options) {  // an empty part is hidden
   $(id).hidden = !text;
-  if (text) fill($(id + 'b'), text);
+  if (text) fill($(id + 'b'), text, options);
 }
 let shown = '';  // the last /read answer on screen
 function clearRecap() {
   for (const id of ['ask', 'rep', 'earl']) $(id).hidden = true;
+  $('pnums').replaceChildren();
   $('earl').open = false;
   shown = '';
 }
@@ -494,7 +511,12 @@ async function refresh() {
   const j = JSON.parse(t), n = j.earlier.split('\\n').length;
   shown = t;
   show('ask', j.asked);
-  show('rep', j.reply);
+  show('rep', j.reply, j.options);
+  $('pnums').replaceChildren(...j.options.filter(n => n < 10).map(n => {
+    const b = document.createElement('button');
+    b.dataset.k = b.textContent = n;
+    return b;
+  }));
   show('earl', j.earlier);  // the <details> element stays, so it keeps its open state
   $('earls').textContent = `Earlier output (${n} line${n == 1 ? '' : 's'})`;
   if (atBottom) box.scrollTop = box.scrollHeight;  // reading further up must not be yanked down
@@ -530,7 +552,12 @@ const back = () => pushed ? (pushed = false, history.back()) : closePanel();
 $('pclose').onclick = back;
 addEventListener('popstate', closePanel);
 document.addEventListener('keydown', e => e.key == 'Escape' && target && !e.isComposing && back());
-$('pkeys').onclick = e => e.target.dataset.k && act('keys', e.target.dataset.k);
+const flash = el => { el.classList.add('sent'); setTimeout(() => el.classList.remove('sent'), 700); };
+const sendKey = async el => (await act('keys', el.dataset.k))?.ok && flash(el);
+$('pkeys').onclick = e => e.target.dataset.k && sendKey(e.target);
+// a click that ends a text selection is reading, not answering
+$('recap').onclick = e => { const o = e.target.closest('.opt'); if (o && !getSelection().toString()) sendKey(o); };
+$('recap').onkeydown = e => { const o = e.target.closest('.opt'); if (o && e.key == 'Enter') sendKey(o); };
 let sending = false;  // a second Enter while /prompt is pending must not send the text again
 $('ptext').onkeydown = async e => {
   const v = $('ptext').value, k = target;
@@ -540,7 +567,8 @@ $('ptext').onkeydown = async e => {
   const r = await act('prompt', v);
   sending = false;
   // restore only for the same card: another card's input must never get this text
-  if (r?.status != 204 && last == k && !$('ptext').value) $('ptext').value = v;
+  if (r?.status == 204) flash($('ptext'));
+  else if (last == k && !$('ptext').value) $('ptext').value = v;
 };
 document.addEventListener('click', e => {
   const tab = e.target.closest('.tab');
@@ -629,6 +657,23 @@ def reply_text(lines):
     return re.sub(r"\n{3,}", "\n\n", "\n".join(reply)).strip("\n")
 
 
+OPTION = re.compile(r"(❯[  ]+)?(\d+)\. \S")
+
+
+def menu_options(lines):
+    """The option numbers of a Claude menu at the end of these lines, or [] when they end without one.
+    A menu numbers its options from 1 and marks the selected one with `❯`; a numbered list in prose has no mark."""
+    nums, marked = [], False
+    for l in lines:
+        m = OPTION.match(l.strip())
+        if m and m[2] == "1":
+            nums, marked = [1], bool(m[1])
+        elif m and int(m[2]) == len(nums) + 1:
+            nums.append(int(m[2]))
+            marked |= bool(m[1])
+    return nums if marked else []
+
+
 def split_recap(text):
     """Split a cleaned recap into the last prompt, the reply to it and the output before it.
     The reply keeps the assistant's text and drops tool calls, their results and status lines;
@@ -636,7 +681,7 @@ def split_recap(text):
     lines = text.split("\n")
     p = next((i for i in range(len(lines) - 1, -1, -1) if PROMPT.match(lines[i])), None)
     if p is None:  # a busy pane's screen often has no prompt left on it
-        return {"asked": "", "reply": reply_text(lines), "earlier": ""}
+        return {"asked": "", "reply": reply_text(lines), "earlier": "", "options": menu_options(lines)}
     j = p + 1  # the prompt goes on over indented lines, blank ones included
     while j < len(lines) and (not lines[j].strip() or lines[j][0] == " " and not lines[j].lstrip().startswith(RESULT)):
         j += 1
@@ -644,7 +689,8 @@ def split_recap(text):
     asked = "\n".join([re.sub(r"^❯[  ]+", "", lines[p])] + [unindent(l) for l in lines[p + 1:j]])
     return {"asked": asked.strip("\n"),
             "reply": reply_text(lines[j:]),
-            "earlier": "\n".join(lines[:p]).strip("\n")}
+            "earlier": "\n".join(lines[:p]).strip("\n"),
+            "options": menu_options(lines[j:])}
 
 
 def read_pane(host, pane_id):

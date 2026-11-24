@@ -95,8 +95,8 @@ The page can send input to an agent. Every POST route splits the key
 |---|---|---|
 | `/focus/<key>` | none | `agent.focus`, then `mark_seen()` |
 | `/prompt/<key>` | the text | `agent.prompt` with `target` and `text` |
-| `/keys/<key>` | space-separated key names from `KEYS` (`1 2 3 esc enter`) | `agent.send_keys` with `target` and `keys` |
-| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`, or `source: visible` when herdr answers `agent_not_idle` (a working agent's history can be read only while it is idle); answers `split_recap(clean_recap(text))` as `application/json`: `{"asked", "reply", "earlier"}` |
+| `/keys/<key>` | space-separated key names from `KEYS` (the digits `1`–`9`, `esc`, `enter`) | `agent.send_keys` with `target` and `keys` |
+| `/read/<key>` | none | `agent.read` with `source: recent_unwrapped` and `lines: 60`, or `source: visible` when herdr answers `agent_not_idle` (a working agent's history can be read only while it is idle); answers `split_recap(clean_recap(text))` as `application/json`: `{"asked", "reply", "earlier", "options"}` |
 
 An empty prompt, a key outside `KEYS`, or a `Content-Length` that is not a number,
 is negative or is over 64 KiB (`MAX_BODY`) is a 400. `body_length()` checks the length
@@ -230,7 +230,8 @@ Opening a card focuses the prompt input only when `matchMedia("(pointer: fine)")
 page from the start and a refresh only replaces the text inside them, so the
 `<details>` keeps its open state. A refresh whose JSON equals the last one does
 nothing, which keeps the reader's text selection. Each text part is cut into
-groups in `tableLines()`. A table row starts with `│ ┌ ├ └ ╭ ╰ ┃` (after leading
+groups in `tableLines()`.
+A table row starts with `│ ┌ ├ └ ╭ ╰ ┃` (after leading
 spaces) and has a second `│` or `┃`; a line made only of box-drawing characters
 is a table line when a row sits directly above or below it. So a wrapped prose
 line that starts with `┃).` and Claude's one-bar menu question stay prose.
@@ -246,6 +247,15 @@ the bottom, so you can read further up.
 `#panel[hidden]` needs its own `display:none` rule, because `display:flex` on
 `#panel` would otherwise override the `hidden` attribute. While the view is
 open `body` gets `overflow:hidden` so the board does not scroll behind it.
+
+**Menus.** `options` lists the option numbers of a Claude menu at the end of the reply
+(`menu_options()`): numbering restarts at each `1.` line, and the run counts
+only if one option carries Claude's `❯` selection mark, so a numbered list in
+prose gives `[]`. The page builds one button per option (digits up to 9)
+between `esc` and `enter`, and `optionLines()` makes the menu's own option lines
+tappable, starting from the last `1.` line. A click that ends a text selection
+sends nothing. A key or prompt that herdr accepts gets the `sent` class for
+700 ms.
 
 **History.** Opening a view calls `history.pushState({card: key}, '')`, so the
 browser back button and the phone back gesture close it. `popstate` does the

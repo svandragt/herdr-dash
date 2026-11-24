@@ -205,10 +205,10 @@ assert split["earlier"] == "❯ earlier question\n\n● earlier answer", split["
 tabled = "❯ compare them\n\n● Here is the table:\n  ┌───┬───┐\n  │ a │ b │\n  ├───┼───┤\n  │ 1 │ 2 │\n  └───┴───┘\n  Done.\n"
 assert dash.split_recap(dash.clean_recap(tabled))["reply"] == "Here is the table:\n┌───┬───┐\n│ a │ b │\n├───┼───┤\n│ 1 │ 2 │\n└───┴───┘\nDone."
 # Without a prompt (another agent, a fresh session) the whole text is the reply.
-assert dash.split_recap("just output\n\nmore") == {"asked": "", "reply": "just output\n\nmore", "earlier": ""}
-assert dash.split_recap("") == {"asked": "", "reply": "", "earlier": ""}
+assert dash.split_recap("just output\n\nmore") == {"asked": "", "reply": "just output\n\nmore", "earlier": "", "options": []}
+assert dash.split_recap("") == {"asked": "", "reply": "", "earlier": "", "options": []}
 # A prompt with nothing after it has an empty reply; a prompt can hold a blank line.
-assert dash.split_recap("● old\n\n❯ /clear") == {"asked": "/clear", "reply": "", "earlier": "● old"}
+assert dash.split_recap("● old\n\n❯ /clear") == {"asked": "/clear", "reply": "", "earlier": "● old", "options": []}
 assert dash.split_recap("❯ first part\n\n  second part\n\n● ok")["asked"] == "first part\n\nsecond part"
 # A menu option is not a prompt, and a question after a tool call is not tool noise.
 menu = "❯ clean up\n\n● Bash(rm -rf build)\n  ⎿  Running…\n Do you want to proceed?\n\n❯ 1. Yes\n  2. No"
@@ -279,7 +279,7 @@ for host in ("evil.example:7655", "127.0.0.1", None):
 assert request("POST", "/read/local:p1", origin="http://evil.example:7655")[0].status == 403
 r, body = request("POST", "/read/local:p1", "localhost:7655", "http://localhost:7655")
 assert r.status == 200 and r.getheader("Content-Type") == "application/json", (r.status, r.getheaders())
-assert json.loads(body) == {"asked": "hi", "reply": "hello", "earlier": ""}, body
+assert json.loads(body) == {"asked": "hi", "reply": "hello", "earlier": "", "options": []}, body
 server.shutdown()
 dash.call = real_call
 
@@ -290,7 +290,7 @@ assert "matchMedia('(pointer: fine)').matches) $('ptext').focus()" in dash.PAGE
 busy = dash.split_recap("I corrected the Test plan.\n\n✻ Waiting for 1 background agent to finish\n\n"
                         "› Message from @qa (ctrl+o to expand)\n\n● Updating PR body\n  ⎿ \u00a0$ gh pr edit 1209\n"
                         "     --body-file x.md\n\n✢ Orbiting… (19s)")
-assert busy == {"asked": "", "reply": "I corrected the Test plan.", "earlier": ""}, busy
+assert busy == {"asked": "", "reply": "I corrected the Test plan.", "earlier": "", "options": []}, busy
 
 # Claude's menu marks its question with one `│` in the margin: not a table, so the rule beside it goes.
 question = "← ☒ Release ☐ Goal\n────────\n│ What should I do with the\n│ worktree?\n\n❯ 1. Discard"
@@ -305,7 +305,40 @@ if shutil.which("node"):
     got = subprocess.run(["node", "-e", js + f"console.log(JSON.stringify({json.dumps(cases)}.map(tableLines)))"],
                          capture_output=True, text=True, check=True).stdout
     assert json.loads(got) == [[False, False], [True] * 5, [False], [False, False]], got
+    # Only the menu's own option lines are tappable: a numbered list above the menu is not.
+    js = re.search(r"const OPT.*?\n}\n", dash.PAGE, re.S).group(0)
+    lines = ["Steps:", "1. Build", "❯ 1. Discard", "   I'll drop it.", "2. Keep", "Enter to select"]
+    got = subprocess.run(["node", "-e", js + f"console.log(JSON.stringify(optionLines({json.dumps(lines)}, [1, 2])))"],
+                         capture_output=True, text=True, check=True).stdout
+    assert json.loads(got) == [0, 0, 1, 0, 2, 0], got
 else:
     print("skip: node not found, the page's table check did not run")
+
+# A Claude menu at the end of the reply gives its option numbers; `❯` marks the selected one.
+menu = """❯ interview me about the decisions?
+
+● Issue#1320's work is all merged to preprod. How should it reach production?
+
+← ☒ Release ☐ Maint mode ☐ Goal ✔ Submit →
+
+│ What should I do with the worktree?
+
+❯ 1. Discard and remove (Recommended)
+     I'll drop the uncommitted 0.3.0 changes.
+  2. Keep it for #1281
+     I'll leave the worktree as it is.
+  3. Type something.
+────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel"""
+assert dash.split_recap(dash.clean_recap(menu))["options"] == [1, 2, 3, 4]
+# A numbered list in prose is not a menu: no option carries the `❯` mark.
+assert dash.split_recap("❯ list them\n\n● Steps:\n  1. Build\n  2. Test")["options"] == []
+# A menu earlier in the reply, followed by a new list, no longer counts.
+assert dash.split_recap("❯ go\n\n❯ 1. Yes\n  2. No\n\n● Done:\n  1. Built")["options"] == []
+
+# A menu can have up to nine options, each answered by its digit; nothing longer is a key.
+assert dash.KEYS == {*"123456789", "esc", "enter"}, dash.KEYS
 
 print("ok")
