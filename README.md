@@ -61,8 +61,8 @@ minute, then disappears.
 ## Steer a session
 
 Click a card to open it full screen. The view shows the session's title, folder,
-icon and status, and a recap of its recent output as plain text, refreshed every
-five seconds. For Claude sessions, the recap leaves out the input box and
+icon and status, and a recap of its recent output as plain text. The recap
+refreshes every five seconds while the agent works, and when its status changes. For Claude sessions, the recap leaves out the input box and
 status line at the bottom of the terminal. It shows your last prompt as "You
 asked" and Claude's answer as "Latest reply", without tool calls, their
 results and status lines. Older output is under "Earlier output", which you

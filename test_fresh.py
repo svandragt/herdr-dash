@@ -228,6 +228,10 @@ def fake_call(host, method, params):
 real_call, dash.call = dash.call, fake_call
 assert dash.read_pane("local", "p1") == "on screen", "a working agent shows its visible screen"
 assert asked == ["recent_unwrapped", "visible"], asked
+# A card the board knows is working skips the history read it would be refused.
+asked.clear()
+assert dash.read_pane("local", "p1", working=True) == "on screen"
+assert asked == ["visible"], asked
 dash.call = real_call
 
 # A request body is read before it is checked, so its declared length must be sane.
@@ -346,5 +350,9 @@ assert dash.split_recap("❯ go\n\n❯ 1. Yes\n  2. No\n\n● Done:\n  1. Built"
 
 # A menu can have up to nine options, each answered by its digit; nothing longer is a key.
 assert dash.KEYS == {*"123456789", "esc", "enter"}, dash.KEYS
+
+# The open view polls only a working card; any other card is read once per status change (park#888).
+assert "latest[target]?.status == 'working' && refresh()" in dash.PAGE
+assert "if (reading) return void (again = true);" in dash.PAGE, "a read in flight blocks the next (park#881)"
 
 print("ok")

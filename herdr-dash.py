@@ -431,6 +431,7 @@ es.onmessage = e => {
   }
   document.getElementById('board').innerHTML = html;
   if (target) head();
+  if (target && latest[target] && latest[target].status != seen) { seen = latest[target].status; refresh(); }
 };
 // The panel lives outside #board because every push replaces #board's innerHTML, which would wipe typed text.
 const $ = id => document.getElementById(id);
@@ -523,7 +524,15 @@ function clearRecap() {
   $('earl').open = false;
   shown = '';
 }
+// One read at a time (park#881): a read asked for meanwhile runs once the current one ends.
+let reading = false, again = false, seen = null;
 async function refresh() {
+  if (reading) return void (again = true);
+  reading = true;
+  try { await read(); } finally { reading = false; }
+  if (again) { again = false; refresh(); }
+}
+async function read() {
   const k = target, r = await act('read', '');
   if (!r?.ok) return;
   const t = await r.text();
@@ -559,7 +568,9 @@ function openPanel(key) {
   if (matchMedia('(pointer: fine)').matches) $('ptext').focus();
   refresh();
   clearInterval(timer);
-  timer = setInterval(refresh, 5000);
+  seen = latest[key]?.status;
+  // Only a working card's output changes on its own; any other is read again when its status changes (park#888).
+  timer = setInterval(() => latest[target]?.status == 'working' && refresh(), 5000);
 }
 function closePanel() {
   target = null;
@@ -714,10 +725,10 @@ def split_recap(text):
             "options": menu_options(lines[j:])}
 
 
-def read_pane(host, pane_id):
+def read_pane(host, pane_id, working=False):
     """Recent output as plain text. herdr reads a working agent's history only when idle, so use its screen then."""
-    reply = call(host, "agent.read", {"target": pane_id, "source": "recent_unwrapped", "lines": 60})
-    if reply.get("error", {}).get("code") == "agent_not_idle":
+    reply = None if working else call(host, "agent.read", {"target": pane_id, "source": "recent_unwrapped", "lines": 60})
+    if reply is None or reply.get("error", {}).get("code") == "agent_not_idle":
         reply = call(host, "agent.read", {"target": pane_id, "source": "visible"})
     return clean_recap(reply["result"]["read"]["text"])
 
@@ -809,7 +820,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # An error response has no "result", so it lands in the KeyError branch too.
             if route == "read":
-                text = json.dumps(split_recap(read_pane(host, pane_id))).encode()
+                working = panes.get(f"{host}:{pane_id}", {}).get("status") == "working"
+                text = json.dumps(split_recap(read_pane(host, pane_id, working))).encode()
             else:
                 call(host, method, params)["result"]
                 text = b""

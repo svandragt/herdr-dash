@@ -225,7 +225,7 @@ the input before the request, so a second Enter has nothing to send, and restore
 the text if the request fails (not a 204, or no answer) while the input is still
 empty and the same card is the last one opened. A `sending` flag also blocks any
 Enter while a `/prompt` is pending, and a held-down Enter (`e.repeat`) is ignored.
-Opening a card focuses the prompt input only when `matchMedia("(pointer: fine)")` matches, because on a touch screen the keyboard would cover the reply. The recap is fetched from `/read` on open and every 5s while open. It shows
+Opening a card focuses the prompt input only when `matchMedia("(pointer: fine)")` matches, because on a touch screen the keyboard would cover the reply. The recap is fetched from `/read` on open, every 5s while the card is working, and once each time a push changes the card's status. An idle, blocked or done agent's output does not change on its own, and polling it made herdr redraw the pane every 5s (park#888). For a working card `/read` asks herdr for the visible screen directly, without first trying the history read herdr refuses. `refresh()` runs one read at a time; a read asked for meanwhile runs once the current one ends (park#881). It shows
 "You asked" and "Latest reply" on top and an "Earlier output (N lines)"
 `<details>` below; a part that is empty is hidden. The three elements are in the
 page from the start and a refresh only replaces the text inside them, so the
@@ -278,7 +278,7 @@ closed view get dropped.
 
 **The error line** (`#perr`) shows the last failed request. `act()` tags it with the
 route that wrote it. A successful `/keys` or `/prompt` clears it. A successful `/read`
-clears it only when a failed `/read` wrote it, so the 5s refresh never wipes a
+clears it only when a failed `/read` wrote it, so a refresh never wipes a
 prompt's error.
 
 ## Desktop launcher
